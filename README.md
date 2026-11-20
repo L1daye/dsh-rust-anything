@@ -1,4 +1,4 @@
-# dsh-rust-anything
+![dsh-rust-anything](docs/banner.png)
 
 [![test](https://github.com/L1daye/dsh-rust-anything/actions/workflows/test.yml/badge.svg)](https://github.com/L1daye/dsh-rust-anything/actions/workflows/test.yml)
 

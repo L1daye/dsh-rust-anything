@@ -253,6 +253,11 @@ try {
   const statusReply = await callRoute('/rust-anything/api/status', { headers: auth })
   check('status with the bearer is 200', statusReply.status === 200 && statusReply.body.ok === true, `status ${statusReply.status}`)
   check('status reports the configured root', statusReply.body.root === installDir)
+  check(
+    'the page knows it has no session directory',
+    ['cwd', 'projectDir', 'explicit'].includes(statusReply.body.projectSource),
+    `projectSource=${statusReply.body.projectSource}`,
+  )
 
   const surfaceGet = await callRoute('/rust-anything/api/surface', { headers: auth })
   check('surface GET carries the live tool counts', surfaceGet.status === 200 && surfaceGet.body.mcpTools && surfaceGet.body.mcpTools.total === 16, JSON.stringify(surfaceGet.body.mcpTools))

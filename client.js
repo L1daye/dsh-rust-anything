@@ -79,6 +79,7 @@ window.__ModuleLoader__.load({
         version: '版本',
         skill: '工作流 skill',
         project: '项目',
+        projectNoSession: '（进程目录 · 无会话上下文）',
         original: '原语言',
         crates: '已生成的 crate',
         cases: '录制用例',
@@ -144,6 +145,7 @@ window.__ModuleLoader__.load({
         version: 'version',
         skill: 'workflow skill',
         project: 'project',
+        projectNoSession: ' (process dir, no session)',
         original: 'original language',
         crates: 'crates',
         cases: 'recorded cases',
@@ -321,7 +323,13 @@ window.__ModuleLoader__.load({
         h(Row, { label: s.binary, value: (data && data.cliPath) || '—', title: (data && data.cliPath) || '' }),
         h(Row, { label: s.root, value: (data && data.root) || '—', title: (data && data.root) || '' }),
         h(Row, { label: s.skill, value: data && data.skill && data.skill.installed ? data.skill.dir : s.notInstalled }),
-        h(Row, { label: s.project, value: project.root || '—', title: project.root || '' }),
+        // An HTTP request carries no session, so the page can only report the harness process
+        // directory; label that instead of passing it off as the project.
+        h(Row, {
+          label: s.project,
+          value: data && data.projectSource === 'cwd' && project.root ? `${project.root} ${s.projectNoSession}` : project.root || '—',
+          title: project.root || '',
+        }),
         h(Row, { label: s.original, value: languages }),
         h(Row, { label: s.crates, value: cratesText, title: crates.map((crate) => crate.dir).join('\n') }),
         project.app ? h(Row, { label: s.app, value: `${project.app.cases} ${s.appCases}${project.app.frontDoor ? ` · ${s.frontDoor}` : ''}` }) : null,

@@ -842,6 +842,7 @@ async function statusReport(config, options = {}) {
       installed: existsFile(path.join(SKILL_ROOT, 'SKILL.md')),
     },
     project: projectReport(options.projectDir || config.projectDir || process.cwd()),
+    projectSource: options.projectSource || (options.projectDir ? 'explicit' : config.projectDir ? 'projectDir' : 'cwd'),
     install: readJson(paths.installFile),
     bootstrap: { plans: Object.keys(PLANS), lastJob: readJson(bootstrapStateFile(paths.root)) },
     notes: [],
@@ -925,10 +926,11 @@ function statusTool(config, hooks) {
       render: (_args, value) => renderStatus(value),
     },
     async execute(args, exec) {
-      const base = resolveBaseDir(config, exec)
+      const info = resolveBaseDirInfo(config, exec)
       return statusReport(config, {
         runtime: hooks.runtimeSnapshot(),
-        projectDir: args?.projectDir ? path.resolve(base, String(args.projectDir)) : base,
+        projectDir: args?.projectDir ? path.resolve(info.dir, String(args.projectDir)) : info.dir,
+        projectSource: args?.projectDir ? 'explicit' : info.source,
         refresh: args?.refresh === true,
         doctor: args?.doctor === true,
       })
@@ -1208,6 +1210,8 @@ function statusRouteHandler(getSettings, hooks) {
       ...(await statusReport(getSettings(), {
         projectDir,
         doctor: url.searchParams.get('doctor') === '1',
+        // No agent on an HTTP request, so the page can never know the session directory.
+        projectSource: projectDir ? 'explicit' : getSettings().projectDir ? 'projectDir' : 'cwd',
         // ?doctor=1 may serve the cached verdict; only refresh=1 (the 运行诊断 button) re-probes.
         // Opening the page used to spawn the CLI and vswhere every time, which made it feel slow.
         refresh: url.searchParams.get('refresh') === '1',
@@ -1397,16 +1401,26 @@ export const inject = ['tools']
 // Electron process happens to sit in, which is what process.cwd() gave before.
 let workingDirectoryService = null
 
-/** Base directory for path arguments and default cwds. */
-export function resolveBaseDir(settings, exec) {
+/**
+ * Where the base directory came from: `session` is the folder the user is working in, `projectDir`
+ * is configured, `cwd` is the harness process directory — which is only meaningful for a tool call,
+ * never for an HTTP request (the page has no session).
+ */
+export function resolveBaseDirInfo(settings, exec) {
   try {
     const session = exec && exec.agent ? exec.agent.session : null
     if (session && workingDirectoryService && typeof workingDirectoryService.get === 'function') {
       const dir = workingDirectoryService.get(session)
-      if (typeof dir === 'string' && dir) return dir
+      if (typeof dir === 'string' && dir) return { dir, source: 'session' }
     }
   } catch { /* service absent, or the session has no directory yet */ }
-  return (settings && settings.projectDir) || process.cwd()
+  if (settings && settings.projectDir) return { dir: settings.projectDir, source: 'projectDir' }
+  return { dir: process.cwd(), source: 'cwd' }
+}
+
+/** Base directory for path arguments and default cwds. */
+export function resolveBaseDir(settings, exec) {
+  return resolveBaseDirInfo(settings, exec).dir
 }
 
 export function apply(ctx, config) {
