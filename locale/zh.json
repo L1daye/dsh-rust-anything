@@ -1,0 +1,8 @@
+{
+  "name": "Rust Anything",
+  "description": "把 rust-anything 接进 DeepSeek Harness：一块一块把应用改写成 Rust——分析仓库、生成 crate、录制原实现行为、diff/build/bench/gate 验证，最后整应用 lift。提供 mcp__rust_anything__* 工具、状态与端口看板页面、工具面开关。",
+  "tools": "Rust Anything 工具",
+  "mcp": "MCP 工具",
+  "page": "端口看板",
+  "surface": "工具面"
+}

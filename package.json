@@ -1,0 +1,77 @@
+{
+  "name": "dsh-rust-anything",
+  "version": "0.1.0-beta.1",
+  "type": "module",
+  "description": "rust-anything for DeepSeek Harness: ports an app to Rust one unit at a time, every step checked against the original's recorded behavior. Registers the CLI's 16 MCP tools as mcp__rust_anything__* with its own stdio client (no peer dependency), plus ra_status / ra_cli / ra_install / ra_surface, a port board and a tool-surface switch.",
+  "license": "MIT",
+  "author": "YG",
+  "icon": "./icon.svg",
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "rust-anything",
+    "rust",
+    "migration",
+    "porting",
+    "mcp"
+  ],
+  "exports": {
+    ".": "./host/index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "host/index.js",
+    "host/mcp-client.js",
+    "host/http-util.js",
+    "host/bootstrap.js",
+    "host/bootstrap-cli.mjs",
+    "client.js",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "locale/*.json",
+    "icon.svg",
+    "skills/rust-anything/SKILL.md",
+    "skills/rust-anything/whole-app.md",
+    "tests/selftest.mjs",
+    "tests/clienttest.mjs",
+    "tests/hosttest.mjs",
+    "tests/fixtures/fake-mcp-cli.mjs",
+    "README.md",
+    "LICENSE",
+    "install.ps1",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "THIRD-PARTY-NOTICES.md",
+    "bridge.plan.json"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/L1daye/dsh-rust-anything"
+  },
+  "homepage": "https://github.com/L1daye/dsh-rust-anything#readme",
+  "bugs": {
+    "url": "https://github.com/L1daye/dsh-rust-anything/issues"
+  },
+  "scripts": {
+    "test": "node tests/selftest.mjs && node tests/clienttest.mjs && node tests/hosttest.mjs"
+  }
+}

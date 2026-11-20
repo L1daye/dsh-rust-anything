@@ -1,0 +1,33 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    # The plugin is Windows-only (install.ps1, vswhere, scheduled-task restarts), so that is the
+    # platform the suites actually claim to cover.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: selftest (bundle shape, files list, patch row)
+        run: node tests/selftest.mjs
+
+      - name: clienttest (page module factory, slots)
+        run: node tests/clienttest.mjs
+
+      - name: hosttest (tools, surface switch, HTTP routes, jobs)
+        run: node tests/hosttest.mjs

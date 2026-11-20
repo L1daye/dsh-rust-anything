@@ -1,0 +1,8 @@
+{
+  "name": "Rust Anything",
+  "description": "Port an app to Rust one unit at a time, with rust-anything: analyze the repository, scaffold the crate, record the original's behavior, diff/build/bench/gate the port, then lift the whole app. Adds mcp__rust_anything__* tools, a status and port-board page, and a tool-surface switch.",
+  "tools": "Rust Anything tools",
+  "mcp": "MCP tools",
+  "page": "Port board",
+  "surface": "Tool surface"
+}

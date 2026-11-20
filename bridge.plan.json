@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "allow": [
+    "analyze",
+    "bridge",
+    "refresh",
+    "profile",
+    "map"
+  ],
+  "updatedAt": null
+}

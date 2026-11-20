@@ -1,0 +1,46 @@
+# dsh-rust-anything — rust-anything (github.com/erkamyaman/rust-anything) for DeepSeek Harness.
+#
+# One row, one process tree: this package's Host half mounts, starts `rust-anything mcp` itself
+# (host/mcp-client.js), and registers what it serves as mcp__rust_anything__<tool>. There is no
+# dependency on @deepseek-ai/dsh-mcp-client — the Harness does not ship it, and a profile that was
+# not populated through pnpm has no copy, so a row naming it would simply fail to resolve.
+#
+# Why the client is ours: rust-anything's server speaks a small documented subset (initialize,
+# tools/list, tools/call, prompts/*, ping, notifications/progress, notifications/cancelled, over
+# newline-delimited JSON-RPC 2.0). Owning the client also means the tool surface is a registry
+# operation, not a process restart: ra_surface (or the composer chip) disposes and re-registers
+# tools immediately, and the child process keeps its cwd, its warm state and its PID.
+#
+# The tool surface lives in <root>/bridge.json
+#   {"enabled":true,"allow":["analyze","map","gate"]}   glob patterns, `*` only
+#   {"enabled":true,"allow":[]}                         every tool
+#   {"enabled":false}                                   no tools
+# ra_surface and the Rust Anything chip write it; an install.ps1 run seeds the "plan" tier only
+# when the file does not exist yet.
+#
+# Long calls: record / build / gate / app lift compile Rust and replay thousands of cases, so
+# callTimeoutMs is 15 minutes by default and the tool-call timeout policy sees the same number.
+#
+# Knobs:
+#   - cliPath            explicit rust-anything binary (wins over discovery: plugin data, PATH,
+#                        ~/.cargo/bin, npm global prefix)
+#   - installDir         where bridge.json / install.json / downloaded releases live
+#   - projectDir         default folder for ra_cli, ra_status and the port board
+#   - mcpArgs            override the argv passed to the CLI (default ["mcp"])
+#   - callTimeoutMs      per tools/call timeout (default 900000)
+#   - installSkillOnBoot false to stop the plugin keeping ~/.dsh/skills/rust-anything in sync
+#   - trustedHosts       extra Host/Origin authorities for the management routes. They are
+#                        authenticated with a per-process Bearer token (also written to
+#                        <root>/http.token, 0600) on top of DSH's connection admission; the fence
+#                        is loopback-only unless a host is listed here.
+- insert:
+    - id: rust-anything-host
+      name: dsh-rust-anything
+      config:
+        # cliPath: 'C:\path\to\rust-anything.exe'
+        # installDir: 'D:\rust-anything'
+        # projectDir: 'D:\work\my-app'
+        # mcpArgs: ['mcp']
+        # callTimeoutMs: 900000
+        # installSkillOnBoot: true
+        # trustedHosts: ['myhost:51404']
