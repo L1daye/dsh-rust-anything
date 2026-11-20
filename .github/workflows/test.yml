@@ -23,11 +23,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      # Each suite prints its own failures; re-emitting them as ::error:: makes them readable as
+      # check-run annotations, which is the only part of a run the API exposes without a token.
       - name: selftest (bundle shape, files list, patch row)
-        run: node tests/selftest.mjs
+        shell: pwsh
+        run: ./.github/run-suite.ps1 tests/selftest.mjs
 
       - name: clienttest (page module factory, slots)
-        run: node tests/clienttest.mjs
+        shell: pwsh
+        run: ./.github/run-suite.ps1 tests/clienttest.mjs
 
       - name: hosttest (tools, surface switch, HTTP routes, jobs)
-        run: node tests/hosttest.mjs
+        shell: pwsh
+        run: ./.github/run-suite.ps1 tests/hosttest.mjs
