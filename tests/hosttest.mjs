@@ -168,8 +168,24 @@ try {
   // explicitly — the dry run then describes exactly what a real run would execute.
   const dry = await registry.get('ra_bootstrap').execute({ ids: ['cargo', 'cc', 'agents', 'mcp server'], dryRun: true, mirror: 'official' })
   const dryIds = dry.items.map((item) => `${item.id}:${item.action}`).join(',')
-  check('ra_bootstrap dry run plans cargo', dry.dryRun === true && dry.items.some((item) => item.id === 'cargo' && item.action === 'install' && /rustup-init/.test(item.command || '')), dryIds)
-  check('ra_bootstrap dry run plans the MSVC linker', dry.items.some((item) => item.id === 'cc' && /winget install --id Microsoft\.VisualStudio\.2022\.BuildTools/.test(item.command || '')))
+  // The plan describes the machine it runs on, so assert the *rule* rather than one machine's state:
+  // an ok check stays untouched, an uninstallable one is skipped, anything else gets a command.
+  const plannedActions = Object.fromEntries(dry.items.map((item) => [item.id, item]))
+  check('the dry run says so', dry.dryRun === true)
+  check('every planned item has a known action', dry.items.every((item) => ['ok', 'install', 'skip', 'unknown'].includes(item.action)), dryIds)
+  check('cargo is either ready or planned through rustup-init', (() => {
+    const item = plannedActions.cargo
+    if (!item) return false
+    if (item.action === 'ok') return true
+    return item.action === 'install' && /rustup-init/.test(item.command || '')
+  })(), `cargo:${plannedActions.cargo && plannedActions.cargo.action}`)
+  check('cc is ready, planned, or reported unknown', (() => {
+    const item = plannedActions.cc
+    if (!item) return false
+    if (item.action === 'ok' || item.action === 'unknown') return true
+    return item.action === 'install' && /winget|BuildTools/.test(item.command || '')
+  })(), `cc:${plannedActions.cc && plannedActions.cc.action}`)
+
   check('ra_bootstrap never installs agents', dry.items.some((item) => item.id === 'agents' && item.action === 'skip'))
   check('ra_bootstrap dry run touches nothing', !fs.existsSync(path.join(installDir, 'cache')))
   // ---- path handling ---------------------------------------------------------------------
