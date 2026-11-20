@@ -6,6 +6,8 @@
 
 > **状态：`0.1.0-beta.1`，仅 Windows，只在 DSH `0.2.2-rc.3` 上验证过。** 兼容矩阵见下。
 
+![Rust Anything 页面](docs/page.png)
+
 ## 它解决什么问题
 
 Harness 里没有 rust-anything 的原生集成，手工加 MCP server 也容易踩坑：pnpm 装出来的 profile 常常不带 `@deepseek-ai/dsh-mcp-client`，照文档写一行 `name: '@deepseek-ai/dsh-mcp-client'` 会直接解析失败。
@@ -57,6 +59,8 @@ MCP 侧 16 个工具按档位注册：`analyze` `bridge` `refresh` `profile` `ma
 四个卡片：**状态**（CLI/MCP/skill/版本/doctor 汇总）、**环境与依赖**（逐项绿黄红点 + 修复按钮 + 停止按钮 + 实时日志）、**移植看板**（unit 列表、fallback 比例、录制数、最近 diff）、**工具面**（档位 chip）。
 
 ## 环境安装
+
+![环境与依赖](docs/env.png)
 
 ```
 ra_bootstrap {plan:"rust"}      # 只补 Rust 工具链（cargo + 链接器）

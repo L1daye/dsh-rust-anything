@@ -53,7 +53,7 @@ try {
   walk('')
   // Files that exist in the repository but are not part of the npm payload.
   const repoOnly = new Set(['.gitignore', '.gitattributes'])
-  const unpromised = onDisk.filter((rel) => !declared.has(rel) && !rel.startsWith('tests/') && !rel.startsWith('.github/') && !rel.startsWith('.git/') && !repoOnly.has(rel) && rel !== 'package.json')
+  const unpromised = onDisk.filter((rel) => !declared.has(rel) && !rel.startsWith('tests/') && !rel.startsWith('.github/') && !rel.startsWith('.git/') && !rel.startsWith('docs/') && !repoOnly.has(rel) && rel !== 'package.json')
   check('every shipped file is listed in package.files', unpromised.length === 0, unpromised.join(', '))
   for (const rel of ['host/index.js', 'host/mcp-client.js', 'client.js', 'cordis.patch.yml', 'dsh.plugin.json', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'skills/rust-anything/SKILL.md', 'skills/rust-anything/whole-app.md']) {
     check(`ships ${rel}`, fs.existsSync(path.join(PKG, rel)))
