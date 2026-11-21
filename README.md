@@ -99,10 +99,10 @@ ra_bootstrap {cancel:true}      # 中止
 
 ```powershell
 cd dsh-rust-anything
-npm test     # selftest + clienttest + hosttest（含 14 条 HTTP 路由断言）
+npm test     # selftest + clienttest + hosttest + installtest（含 14 条 HTTP 路由断言与 19 条安装器断言）
 ```
 
-三套测试不装 DSH：用假 MCP server 与桩 ctx 覆盖工具注册、工具面切换、路由鉴权、后台任务、路径规范化。
+四套测试不装 DSH：用假 MCP server 与桩 ctx 覆盖工具注册、工具面切换、路由鉴权、后台任务、路径规范化；安装器测试在临时 DSH home 上真跑 install.ps1（干跑决策、真实安装、.bak 保留、-Uninstall 回滚）。
 
 ## 许可
 

@@ -40,3 +40,7 @@ jobs:
       - name: hosttest (tools, surface switch, HTTP routes, jobs)
         shell: pwsh
         run: ../.github/run-suite.ps1 tests/hosttest.mjs
+
+      - name: installtest (installer: dry run, real install, uninstall)
+        shell: pwsh
+        run: ../.github/run-suite.ps1 tests/installtest.mjs
