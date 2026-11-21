@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.4
+
+### 样式
+
+- 输入框左侧的「工具面」chip 改为与 `dsh-craft-anything` 同一视觉：`border-l2` 细边、12px、`5px 9px`、`radius 8`、7px 圆点、9px 箭头；**规划/移植/全部为橙色**（`state-warn-primary`，文字+边框+圆点同色），**关闭为灰色**（`label-secondary` + idle 圆点 + 0.7 透明度）；展开菜单只改背景，不再把档位色刷成白色。
+
 ## 0.1.0-beta.3
 
 ### 修复
