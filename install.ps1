@@ -23,7 +23,8 @@
 [CmdletBinding()]
 param(
   [string]$ProfileName = 'desktop',
-  [string]$DshHome = (Join-Path $env:USERPROFILE '.dsh'),
+  # DSH_HOME wins when set: the harness reads it, so the installer must land where the harness looks.
+[string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
   [switch]$DryRun,
   [switch]$Uninstall,
   [ValidateSet('', 'rust', 'ts', 'python', 'go', 'ruby', 'java', 'wasm', 'all')]

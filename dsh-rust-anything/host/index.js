@@ -31,8 +31,14 @@ const IS_WINDOWS = process.platform === 'win32'
 const EXE_NAME = IS_WINDOWS ? 'rust-anything.exe' : 'rust-anything'
 const HOME = process.env.USERPROFILE || process.env.HOME || os.homedir()
 
-const DEFAULT_ROOT = path.join(HOME, '.dsh', 'plugins-data', 'rust-anything')
-const SKILL_ROOT = path.join(HOME, '.dsh', 'skills', 'rust-anything')
+// The harness itself honours DSH_HOME (portable installs, several homes on one machine); a plugin
+// that hardcodes ~/.dsh writes into the wrong home the moment that variable is set.
+const DSH_HOME = process.env.DSH_HOME && process.env.DSH_HOME.trim()
+  ? path.resolve(process.env.DSH_HOME.trim())
+  : path.join(HOME, '.dsh')
+
+const DEFAULT_ROOT = path.join(DSH_HOME, 'plugins-data', 'rust-anything')
+const SKILL_ROOT = path.join(DSH_HOME, 'skills', 'rust-anything')
 
 const REPO = 'erkamyaman/rust-anything'
 const SERVER_NAME = 'rust_anything'
@@ -80,7 +86,7 @@ function versionedFirst(names) {
   return names.slice().sort((a, b) => rank(a) - rank(b) || b.localeCompare(a, undefined, { numeric: true }))
 }
 
-function installRoot(config = {}) {
+export function installRoot(config = {}) {
   return typeof config.installDir === 'string' && config.installDir.trim()
     ? path.resolve(config.installDir.trim())
     : DEFAULT_ROOT

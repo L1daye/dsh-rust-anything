@@ -188,6 +188,18 @@ try {
 
   check('ra_bootstrap never installs agents', dry.items.some((item) => item.id === 'agents' && item.action === 'skip'))
   check('ra_bootstrap dry run touches nothing', !fs.existsSync(path.join(installDir, 'cache')))
+  // ---- DSH_HOME ---------------------------------------------------------------------------
+  {
+    const saved = process.env.DSH_HOME
+    const custom = path.join(tmp, 'ra-home')
+    process.env.DSH_HOME = custom
+    // A fresh module instance: DEFAULT_ROOT is computed at import time.
+    const fresh = await import(`${pathToFileURL(path.join(PKG, 'host', 'index.js')).href}?dshHome=1`)
+    check('DSH_HOME decides the install root', fresh.installRoot({}) === path.join(custom, 'plugins-data', 'rust-anything'), fresh.installRoot({}))
+    check('an explicit installDir still wins', fresh.installRoot({ installDir: path.join(tmp, 'explicit') }) === path.join(tmp, 'explicit'))
+    if (saved === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = saved
+  }
   // ---- path handling ---------------------------------------------------------------------
   const base = path.join(tmp, 'app')
   check('a relative path becomes absolute', host.absolutizePath('rust/foo-rs', base) === path.join(base, 'rust', 'foo-rs'))
@@ -241,6 +253,15 @@ try {
   check('six routes are registered', routes.size === 6, [...routes.keys()].join(','))
 
   const loopback = { host: '127.0.0.1:5173' }
+  // The token file is what makes the page reachable from a browser; a version of createHttpAuth wrote
+  // to an undefined path inside a silent catch for weeks, so assert the file itself.
+  {
+    const { createHttpAuth } = await import(pathToFileURL(path.join(PKG, 'host', 'http-util.js')).href)
+    const tokenFile = path.join(tmp, 'home', 'plugins-data', 'rust-anything', 'http.token')
+    const auth = createHttpAuth({}, {}, tokenFile)
+    const written = fs.existsSync(tokenFile) ? fs.readFileSync(tokenFile, 'utf8').trim() : ''
+    check('the bearer token lands on disk', written === auth.token && /^[0-9a-f]{64}$/.test(written), tokenFile)
+  }
   const tokenReply = await callRoute('/rust-anything/api/token', { headers: loopback })
   check('the token route answers on loopback without a bearer', tokenReply.status === 200 && /^[0-9a-f]{64}$/.test(tokenReply.body.token || ''), `status ${tokenReply.status}`)
   const token = tokenReply.body.token

@@ -10,9 +10,13 @@ import path from 'node:path'
 export function createHttpAuth(ctx, settings = {}, tokenFile) {
   const token = randomBytes(32).toString('hex')
   try {
-    fs.mkdirSync(paths.root, { recursive: true })
-    fs.writeFileSync(paths.tokenFile, `${token}\n`, { mode: 0o600 })
-  } catch { /* the page still bootstraps the token from the route */ }
+    fs.mkdirSync(path.dirname(tokenFile), { recursive: true })
+    fs.writeFileSync(tokenFile, `${token}` + "\n", { mode: 0o600 })
+  } catch (error) {
+    // The page still bootstraps the token from /api/token, but a silent catch is how the old version
+    // kept writing to an undefined path without anyone noticing.
+    ctx.logger?.warn?.(`dsh-rust-anything: could not write ${tokenFile}: ${error?.message || error}`)
+  }
   return { token, settings }
 }
 
@@ -115,4 +119,3 @@ export function readJsonBody(req, limit = 8192) {
     req.on('error', reject)
   })
 }
-

@@ -4,7 +4,7 @@
 
 把 [rust-anything](https://github.com/erkamyaman/rust-anything) 接进 DeepSeek Harness：**16 个 MCP 工具** + **5 个 `ra_*` 工具** + 一块移植看板 + 一个环境安装器。
 
-> **状态：`0.1.0-beta.1`，仅 Windows，只在 DSH `0.2.2-rc.3` 上验证过。** 兼容矩阵见下。
+> **状态：`0.1.0-beta.1`，仅 Windows，DSH `0.2.2-rc.1` 与 `rc.3` 已验证。** 兼容矩阵见下。
 
 ![Rust Anything 页面](docs/page.png)
 
@@ -22,7 +22,7 @@ Harness 里没有 rust-anything 的原生集成，手工加 MCP server 也容易
 
 ## 快速开始
 
-要求：Windows 10/11、DeepSeek Harness ≥ `0.2.2-rc.3`、Node ≥ 20。
+要求：Windows 10/11、DeepSeek Harness ≥ `0.2.2-rc.1`、Node ≥ 20。
 
 ```powershell
 git clone https://github.com/L1daye/dsh-rust-anything
@@ -78,7 +78,8 @@ ra_bootstrap {cancel:true}      # 中止
 
 | DSH 版本 | Windows | macOS | Linux |
 |---|---|---|---|
-| `0.2.2-rc.3` | ✅ 端到端验证 | ❌ 不支持 | ❌ 不支持 |
+| `0.2.2-rc.3` | ✅ 端到端验证（主机半 + 页面） | ❌ 不支持 | ❌ 不支持 |
+| `0.2.2-rc.1` | ✅ 主机半与 `/api/*` 路由实测（隔离 profile 无头引导）；页面未逐屏验收 | ❌ 不支持 | ❌ 不支持 |
 | 其他 `0.2.x` | ⚠️ 未验证 | — | — |
 
 非 Windows 上 `npm install` 会直接拒绝（`package.json` 的 `os` 字段），`install.ps1` 也会在入口处停止并说明原因——不支持就明确不支持，不留半途失败。

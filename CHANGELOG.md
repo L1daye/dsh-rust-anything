@@ -8,6 +8,11 @@
 - `actions/checkout` 与 `actions/setup-node` 升到 **v5**——`node20` runtime 已被 GitHub 标记弃用（2026-09 移除）；
 - 修掉一个让整个工作流非法的 YAML 错误：step 名里未加引号的 `": "` 被当成映射键，导致每次 push 的 run 都不产生任何 job（徽章直接红）。
 
+### 兼容性
+
+- **支持 DSH `0.2.2-rc.1`**：`engines.dsh` 从 `>=0.2.1-rc.2` 改为 `>=0.2.2-rc.1`。在隔离 profile 上用 rc.1 无头引导验证：`/rust-anything/api/token` 返回 64 hex、`/api/surface` 正常响应、`http.token` 落盘；页面未逐屏验收；
+- **认识 `DSH_HOME`**：插件与 `install.ps1` 之前只认 `%USERPROFILE%\.dsh`，在设置了 `DSH_HOME` 的机器上会写到错误的家目录（实测会污染真实 home 的 `plugins-data`）；现在两者均优先取 `DSH_HOME`；
+- **修掉 token 从不落盘**：`createHttpAuth` 抽成 `http-util.js` 时签名改了、函数体还引用已不存在的 `paths`，异常被静默 `catch` 吞掉。页面一直靠 `/api/token` 引导才没暴露；现在写对路径并且失败会告警。
 ## 0.1.0-beta.1
 
 首个公开版本。功能齐了，范围也划清了：**Windows only，DSH `0.2.2-rc.3` 上端到端验证**。
