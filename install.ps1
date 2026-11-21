@@ -114,7 +114,7 @@ if ($bundles -contains 'dsh-rust-anything') {
 # --- 3. seed the tool surface ------------------------------------------------
 $bridgeFile = Join-Path $dataDir 'bridge.json'
 # The seed is optional: a repository without bridge.plan.json just keeps the plugin's default surface.
-$seedFile = Join-Path $here 'bridge.plan.json'
+$seedFile = Join-Path $src 'bridge.plan.json'
 $seed = $null
 if (Test-Path $seedFile) {
   $seed = Get-Content $seedFile -Raw | ConvertFrom-Json

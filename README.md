@@ -98,7 +98,8 @@ ra_bootstrap {cancel:true}      # 中止
 ## 测试
 
 ```powershell
-npm test     # selftest + clienttest + hosttest（含 13 条 HTTP 路由断言）
+cd dsh-rust-anything
+npm test     # selftest + clienttest + hosttest（含 14 条 HTTP 路由断言）
 ```
 
 三套测试不装 DSH：用假 MCP server 与桩 ctx 覆盖工具注册、工具面切换、路由鉴权、后台任务、路径规范化。

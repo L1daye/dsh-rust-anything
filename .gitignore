@@ -33,3 +33,10 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# local cognition layer and build snapshots (not part of the published plugin)
+.aoci/
+aoci.txt
+aoci.*.txt
+AGENTS.md
+MANIFEST.json

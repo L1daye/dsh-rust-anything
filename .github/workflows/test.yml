@@ -16,6 +16,10 @@ jobs:
       matrix:
         node: ['22', '24']
 
+    defaults:
+      run:
+        working-directory: dsh-rust-anything
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,12 +31,12 @@ jobs:
       # check-run annotations, which is the only part of a run the API exposes without a token.
       - name: selftest (bundle shape, files list, patch row)
         shell: pwsh
-        run: ./.github/run-suite.ps1 tests/selftest.mjs
+        run: ../.github/run-suite.ps1 tests/selftest.mjs
 
       - name: clienttest (page module factory, slots)
         shell: pwsh
-        run: ./.github/run-suite.ps1 tests/clienttest.mjs
+        run: ../.github/run-suite.ps1 tests/clienttest.mjs
 
       - name: hosttest (tools, surface switch, HTTP routes, jobs)
         shell: pwsh
-        run: ./.github/run-suite.ps1 tests/hosttest.mjs
+        run: ../.github/run-suite.ps1 tests/hosttest.mjs
