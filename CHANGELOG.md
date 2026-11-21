@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### CI
+
+- 增加 `lint` 作业：actionlint 覆盖 YAML 语法、未知键、`uses` 引用、`${{ }}` 表达式与 `run` 块的 shellcheck，跑在 `ubuntu-latest`，十几秒；
+- `actions/checkout` 与 `actions/setup-node` 升到 **v5**——`node20` runtime 已被 GitHub 标记弃用（2026-09 移除）；
+- 修掉一个让整个工作流非法的 YAML 错误：step 名里未加引号的 `": "` 被当成映射键，导致每次 push 的 run 都不产生任何 job（徽章直接红）。
+
 ## 0.1.0-beta.1
 
 首个公开版本。功能齐了，范围也划清了：**Windows only，DSH `0.2.2-rc.3` 上端到端验证**。
