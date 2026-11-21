@@ -44,3 +44,16 @@ jobs:
       - name: installtest (installer dry run, real install, uninstall)
         shell: pwsh
         run: ../.github/run-suite.ps1 tests/installtest.mjs
+
+  lint:
+    # A colon inside an unquoted value once turned this file invalid and every run died with
+    # "Invalid workflow file" and zero jobs. actionlint catches that plus unknown keys, bad `uses`
+    # refs, expression syntax and shellcheck on the run blocks -- a hand-rolled parser would only
+    # have covered the one case.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-actionlint@v1
+        with:
+          fail_level: error
+          level: error
