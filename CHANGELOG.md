@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.2
 
 ### CI
 
@@ -8,6 +8,11 @@
 - `actions/checkout` 与 `actions/setup-node` 升到 **v5**——`node20` runtime 已被 GitHub 标记弃用（2026-09 移除）；
 - 修掉一个让整个工作流非法的 YAML 错误：step 名里未加引号的 `": "` 被当成映射键，导致每次 push 的 run 都不产生任何 job（徽章直接红）。
 
+### 修复
+
+- **装完 cargo 不补 PATH**：rustup 用 `--no-modify-path` 安装，而 `download` 分支从不应用 `CHECKS[*].env`，于是工具装好了 doctor 却一直报 missing。现在安装后按声明补 PATH（`ensureUserPath`）；
+- **agent 家族被当成可装项**：新版 CLI 把 `agents` 拆成 `Claude Code mcp` / `Claude Code skill` / `Gemini CLI mcp`，这三个和 `agents` 一样永不由本插件安装，`neverInstalled()` 改为前缀匹配；
+- **重启打断的任务永远显示「安装中」**：status / board / bootstrap 三条读路径改为共用 `settledBootstrapJob()`，读到 `running:true` 但进程内没有任务时立即结算并落盘。
 ### 兼容性
 
 - **支持 DSH `0.2.2-rc.1`**：`engines.dsh` 从 `>=0.2.1-rc.2` 改为 `>=0.2.2-rc.1`。在隔离 profile 上用 rc.1 无头引导验证：`/rust-anything/api/token` 返回 64 hex、`/api/surface` 正常响应、`http.token` 落盘；页面未逐屏验收；
