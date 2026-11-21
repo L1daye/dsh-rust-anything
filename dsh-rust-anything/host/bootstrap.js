@@ -698,6 +698,19 @@ async function installOne(item, context) {
     log(`rustup-init exited ${result.code}`)
     if (result.code !== 0) throw new Error(`rustup-init failed: ${(result.stderr || '').trim().slice(0, 300)}`)
     current = await refreshPath(run, current)
+    // `--no-modify-path` keeps rustup from touching PATH, so the directories the check declares have
+    // to be added here. Without this the tool is installed but invisible to doctor on every later
+    // probe — exactly what happened with cargo on a fresh machine.
+    const declared = (spec.env || [])
+      .map((dir) => path.join(HOME, String(dir).replace(/^\{home\}/i, '').replace(/^[\\/]+/, '')))
+      .filter((dir) => {
+        try {
+          return fs.statSync(dir).isDirectory()
+        } catch {
+          return false
+        }
+      })
+    if (declared.length) current = await ensureUserPath(run, current, declared, true)
   }
   if (spec.direct) {
     try {
@@ -902,6 +915,17 @@ export async function runBootstrap(options) {
  */
 export const NEVER_INSTALLED = new Set(['agents', 'mcp server'])
 
+/**
+ * Newer rust-anything builds list the agent targets individually (`Claude Code mcp`, `Gemini CLI
+ * skill`, …) instead of one `agents` row. They are the same thing: registering this CLI into another
+ * coding agent. This plugin never installs them, so they must not look actionable.
+ */
+const AGENT_TARGET = /^(Claude Code|Codex|Cursor|Gemini CLI|OpenCode|Qwen|Cline|Windsurf|Aider)\b/i
+
+export function neverInstalled(name) {
+  return NEVER_INSTALLED.has(name) || AGENT_TARGET.test(String(name))
+}
+
 export function summarize(checks, local = {}) {
   const info = { ok: 0, total: checks.length, stillMissing: [], skipped: [] }
   for (const check of checks) {
@@ -909,7 +933,7 @@ export function summarize(checks, local = {}) {
       info.ok += 1
       continue
     }
-    if (NEVER_INSTALLED.has(check.name)) {
+    if (neverInstalled(check.name)) {
       info.skipped.push(`${check.name}（不装）`)
       continue
     }

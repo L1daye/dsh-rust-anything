@@ -814,6 +814,24 @@ async function localChecks() {
   return value
 }
 
+/**
+ * A job killed from outside (task manager, a reboot, an app restart) leaves `running: true` on disk
+ * forever; the in-process flag is the only thing that knows better. Settle it once and persist, so
+ * every read path — status, board, the bootstrap route — agrees instead of showing "installing" for
+ * hours after the child process is gone.
+ */
+function settledBootstrapJob(root) {
+  const stored = readJson(bootstrapStateFile(root))
+  if (!stored) return null
+  if (bootstrapJob.running) return bootstrapJob
+  const job = { ...stored, running: false, stale: stored.running === true || stored.stale === true }
+  if (stored.running === true) {
+    job.output = [...(stored.output || []), 'that run ended when the harness restarted']
+    try { fs.writeFileSync(bootstrapStateFile(root), `${JSON.stringify(job, null, 2)}\n`) } catch { /* best effort */ }
+  }
+  return job
+}
+
 async function statusReport(config, options = {}) {
   const resolved = resolveCli(config)
   const paths = statePaths(config)
@@ -850,7 +868,7 @@ async function statusReport(config, options = {}) {
     project: projectReport(options.projectDir || config.projectDir || process.cwd()),
     projectSource: options.projectSource || (options.projectDir ? 'explicit' : config.projectDir ? 'projectDir' : 'cwd'),
     install: readJson(paths.installFile),
-    bootstrap: { plans: Object.keys(PLANS), lastJob: readJson(bootstrapStateFile(paths.root)) },
+    bootstrap: { plans: Object.keys(PLANS), lastJob: settledBootstrapJob(paths.root) },
     notes: [],
   }
   if (resolved.cli) {
@@ -1373,23 +1391,9 @@ function bootstrapRouteHandler(getSettings, hooks) {
     const settings = getSettings()
     const root = installRoot(settings)
     if ((req.method || 'GET').toUpperCase() !== 'POST') {
-      // A job killed from outside (task manager, a reboot, a cancelled task) leaves running:true in
-      // the file forever; the in-process flag is the only thing that knows better.
-      const stored = readJson(bootstrapStateFile(root))
-      let job = bootstrapJob
-      if (stored) {
-        if (bootstrapJob.running) {
-          job = bootstrapJob
-        } else {
-          // A run that died with the process left running:true on disk. Settle it once and write the
-          // settled state back, so every later poll does not resurrect the same "interrupted" notice.
-          job = { ...stored, running: false, stale: stored.running === true || stored.stale === true }
-          if (stored.running === true) {
-            job.output = [...(stored.output || []), 'that run ended when the harness restarted']
-            try { fs.writeFileSync(bootstrapStateFile(root), `${JSON.stringify(job, null, 2)}\n`) } catch { /* best effort */ }
-          }
-        }
-      }
+      // A job killed from outside (task manager, a reboot, a restart) leaves running:true in the
+      // file forever; the in-process flag is the only thing that knows better.
+      const job = settledBootstrapJob(root) || bootstrapJob
       return sendJson(res, 200, { ok: true, plans: Object.keys(PLANS), job })
     }
     const body = await readJsonBody(req).catch(() => ({}))

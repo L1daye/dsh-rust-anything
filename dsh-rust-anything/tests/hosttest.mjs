@@ -172,11 +172,11 @@ try {
   // an ok check stays untouched, an uninstallable one is skipped, anything else gets a command.
   const plannedActions = Object.fromEntries(dry.items.map((item) => [item.id, item]))
   check('the dry run says so', dry.dryRun === true)
-  check('every planned item has a known action', dry.items.every((item) => ['ok', 'install', 'skip', 'unknown'].includes(item.action)), dryIds)
-  check('cargo is either ready or planned through rustup-init', (() => {
+  check('every planned item has a known action', dry.items.every((item) => ['ok', 'install', 'skip', 'unknown', 'fixpath'].includes(item.action)), dryIds)
+  check('cargo is ready, on-PATH-only, or planned through rustup-init', (() => {
     const item = plannedActions.cargo
     if (!item) return false
-    if (item.action === 'ok') return true
+    if (item.action === 'ok' || item.action === 'fixpath') return true
     return item.action === 'install' && /rustup-init/.test(item.command || '')
   })(), `cargo:${plannedActions.cargo && plannedActions.cargo.action}`)
   check('cc is ready, planned, or reported unknown', (() => {

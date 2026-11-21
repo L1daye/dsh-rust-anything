@@ -121,8 +121,8 @@ try {
   check('a killed job is reported as stale', client.includes('envStale') && read('host/index.js').includes('stale: stored.running === true'))
 
   // Bootstrap: every check doctor can emit has an entry, and the hard blockers are in every plan.
-  const boot = await import(pathToFileURL(path.join(PKG, 'host', 'bootstrap.js')).href)
   // rust-anything 2.1 added Kotlin and Android; every id doctor can emit needs a recipe here.
+  const boot = await import(pathToFileURL(path.join(PKG, 'host', 'bootstrap.js')).href)
   const doctorIds = ['cargo', 'node', 'python3', 'cc', 'go', 'ruby', 'java', 'javac', 'php', 'dotnet', 'wasm-bindgen', 'wasm32-unknown-unknown', 'kotlinc', 'Android NDK', 'Android Rust targets', 'mcp server', 'agents']
   const missing = doctorIds.filter((id) => !boot.CHECKS[id])
   check('every doctor check has an install recipe', missing.length === 0, missing.join(', '))
@@ -143,6 +143,10 @@ try {
   const planned = boot.planFor({ plan: 'rust', checks: [{ name: 'cargo', status: 'missing', required: true }, { name: 'cc', status: 'missing', required: false }] })
   check('planFor puts rustup before the linker', planned.length === 2 && planned[0].id === 'cargo' && planned[1].id === 'cc')
   check('planFor skips checks doctor calls ok', boot.planFor({ plan: 'rust', checks: [{ name: 'cargo', status: 'ok' }, { name: 'cc', status: 'ok' }] }).every((item) => item.action === 'ok'))
+  // Newer CLI builds list the agent targets one by one instead of a single `agents` row.
+  check('agents are never installed', ['agents', 'mcp server'].every((name) => boot.neverInstalled(name)))
+  check('split agent targets are never installed', ['Claude Code mcp', 'Claude Code skill', 'Gemini CLI mcp', 'Codex skill'].every((name) => boot.neverInstalled(name)))
+  check('a real toolchain is installable', !boot.neverInstalled('cargo') && !boot.neverInstalled('Android NDK'))
   check('bootstrap-cli ships', fs.existsSync(path.join(PKG, 'host', 'bootstrap-cli.mjs')))
 } catch (error) {
   fail('static checks', String(error && error.stack ? error.stack : error))
