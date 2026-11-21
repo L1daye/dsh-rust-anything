@@ -200,6 +200,15 @@ try {
     if (saved === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = saved
   }
+  // The env card decides per row from `installable` + `suggested`; newer CLI builds emit one row
+  // per agent target, and an exact-name map left them looking installable.
+  const decorated = host.decorateDoctorChecks([
+    { name: 'Claude Code mcp', status: 'missing' },
+    { name: 'Gemini CLI mcp', status: 'missing' },
+    { name: 'cargo', status: 'missing' },
+  ], {})
+  check('agent targets render as not-installable', decorated.filter((c) => c.name.includes('CLI') || c.name.startsWith('Claude')).every((c) => c.installable === false && c.suggested === 'skip'), JSON.stringify(decorated.map((c) => [c.name, c.suggested])))
+  check('a real toolchain stays installable', decorated.find((c) => c.name === 'cargo').suggested !== 'skip')
   // ---- path handling ---------------------------------------------------------------------
   const base = path.join(tmp, 'app')
   check('a relative path becomes absolute', host.absolutizePath('rust/foo-rs', base) === path.join(base, 'rust', 'foo-rs'))

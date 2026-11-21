@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-beta.3
+
+### 修复
+
+- **环境卡把 agent 行当成可装项**：新版 CLI 把 `agents` 拆成 `Claude Code mcp` / `Claude Code skill` / `Gemini CLI mcp`，卡片按精确名字查 `NOT_INSTALLABLE` 时漏掉它们，于是显示「装」按钮并计进「待装」。现在与 `neverInstalled()` 同一判据，一律标成不装；
+- **stale 任务的「仍缺少 …」**：那行是任务结束时的快照，重启打断后它与卡片上方的行互相矛盾；任务 stale 时不再显示。
+
 ## 0.1.0-beta.2
 
 ### CI

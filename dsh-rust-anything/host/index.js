@@ -21,7 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRustAnythingClient } from './mcp-client.js'
 import { createHttpAuth, guarded, readJsonBody, rejectRequest, sendJson } from './http-util.js'
-import { bootstrapStateFile, CHECKS, localStatus, PLANS, planFor, readDoctor, refreshMachineEnv, refreshPath, runBootstrap } from './bootstrap.js'
+import { bootstrapStateFile, CHECKS, localStatus, neverInstalled, PLANS, planFor, readDoctor, refreshMachineEnv, refreshPath, runBootstrap } from './bootstrap.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PACKAGE_DIR = path.resolve(HERE, '..')
@@ -764,7 +764,10 @@ export function decorateDoctorChecks(checks, local) {
       suggested: 'install',
     }
     entry.weight = CHECKS[name] && CHECKS[name].weight ? CHECKS[name].weight : 'small'
+    // Newer CLI builds split `agents` into one row per target (`Claude Code mcp`, `Gemini CLI mcp`,
+    // …); the card keys off this field, so an exact-name map alone leaves them looking installable.
     const blocked = NOT_INSTALLABLE[name]
+      || (neverInstalled(name) ? '给其他编码 CLI 注册本 CLI 的说明文件，本插件不装' : null)
     if (blocked) {
       entry.installable = false
       entry.suggested = 'skip'

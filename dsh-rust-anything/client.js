@@ -527,7 +527,9 @@ window.__ModuleLoader__.load({
         didWork && job.output && job.output.length
           ? h('pre', { className: 'dsh-ra-log is-fixed' }, job.output.slice(-12).join('\n'))
           : null,
-        job && job.doctorAfter && job.doctorAfter.stillMissing && job.doctorAfter.stillMissing.length
+        // A job's post-run summary describes the machine as it was *then*. Once the job is stale (the
+        // app restarted, PATH has since been fixed) the line contradicts the rows above it, so drop it.
+        job && !job.stale && job.doctorAfter && job.doctorAfter.stillMissing && job.doctorAfter.stillMissing.length
           ? h('p', { className: 'dsh-ra-note' }, `${s.envStill}: ${job.doctorAfter.stillMissing.join(', ')}`)
           : null)
     }

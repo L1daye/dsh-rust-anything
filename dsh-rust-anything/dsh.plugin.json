@@ -1,6 +1,6 @@
 {
   "id": "dsh-rust-anything",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "rust-anything (github.com/erkamyaman/rust-anything) for DeepSeek Harness: mcp__rust_anything__* tools that analyze a repository, scaffold the Rust crate, record the original's behavior, diff/build/bench/gate the port and lift a whole app, plus ra_status / ra_cli / ra_install / ra_surface / ra_bootstrap (toolchain bootstrap driven by `doctor --json`), a port-board page and a tool-surface switch.",
   "engines": {
     "dsh": ">=0.2.2-rc.1"
