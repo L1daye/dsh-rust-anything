@@ -4,7 +4,7 @@
 
 把 [rust-anything](https://github.com/erkamyaman/rust-anything) 接进 DeepSeek Harness：**16 个 MCP 工具** + **5 个 `ra_*` 工具** + 一块移植看板 + 一个环境安装器。
 
-> **状态：`0.1.0-beta.1`，仅 Windows，DSH `0.2.2-rc.1` 与 `rc.3` 已验证。** 兼容矩阵见下。
+> **状态：`0.1.0`（正式版），仅 Windows，DSH `0.2.2-rc.1` 与 `rc.3` 已验证。** 兼容矩阵见下。
 
 ![Rust Anything 页面](docs/page.png)
 
