@@ -74,5 +74,8 @@
   },
   "scripts": {
     "test": "node tests/selftest.mjs && node tests/clienttest.mjs && node tests/hosttest.mjs && node tests/installtest.mjs"
-  }
+  },
+  "os": [
+    "win32"
+  ]
 }

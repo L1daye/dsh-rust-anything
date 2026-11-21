@@ -31,6 +31,14 @@ param(
   [switch]$BootstrapDryRun
 )
 
+# PowerShell runs on macOS and Linux too, so a wrong-platform attempt would otherwise fail halfway
+# through copying files. Refuse up front instead.
+if ($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsWindows) {
+  Write-Host 'install.ps1: this plugin supports Windows only (install.ps1, vswhere, scheduled-task restarts).' -ForegroundColor Red
+  Write-Host 'Nothing was changed. See the compatibility matrix in README.md.'
+  exit 1
+}
+
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 # The package lives either next to this script (repo root layout) or in a `dsh-rust-anything/`

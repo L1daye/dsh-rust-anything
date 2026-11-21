@@ -78,8 +78,10 @@ ra_bootstrap {cancel:true}      # 中止
 
 | DSH 版本 | Windows | macOS | Linux |
 |---|---|---|---|
-| `0.2.2-rc.3` | ✅ 端到端验证 | ⚠️ 未验证 | ⚠️ 未验证 |
+| `0.2.2-rc.3` | ✅ 端到端验证 | ❌ 不支持 | ❌ 不支持 |
 | 其他 `0.2.x` | ⚠️ 未验证 | — | — |
+
+非 Windows 上 `npm install` 会直接拒绝（`package.json` 的 `os` 字段），`install.ps1` 也会在入口处停止并说明原因——不支持就明确不支持，不留半途失败。
 
 插件依赖若干**未公开的内部接口**（`ctx.tools.register`、`ctx.inject(['webServer'])`、`slots.register`、`window.__ModuleLoader__`、`ctx.workingDirectory`）。DSH 升级可能改变它们——升级后请先 `node tests/*.mjs`，再看 `ra_status`。
 
