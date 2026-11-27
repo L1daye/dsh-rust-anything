@@ -181,6 +181,15 @@ export const CHECKS = {
       dest: 'php',
       path: ['{root:dest}'],
       scope: 'machine',
+      // The zip ships php_ffi.dll but no php.ini, so nothing loads it and doctor's PHP check fails on
+      // "FFI extension not loaded" — the PHP bridge in rust-anything is FFI.
+      ini: {
+        'php.ini': [
+          'extension_dir="{root:dest}\\ext"',
+          'extension=ffi',
+          'ffi.enable=true',
+        ],
+      },
     },
     winget: 'PHP.PHP.8.4',
   },
@@ -629,6 +638,43 @@ export async function ensureMachineEnv(run, env, values) {
   return { ...env, ...Object.fromEntries(entries) }
 }
 
+/**
+ * Write the configuration an unpacked archive needs but does not ship enabled.
+ *
+ * Never clobbers a file the user tuned: an existing target is appended to, and a file that already
+ * enables the same extension is left alone. `{root:dest}` expands to the destination directory, so a
+ * Windows ini gets the absolute `extension_dir` PHP needs when the process runs from elsewhere.
+ */
+export function applyIni(dest, direct, log = () => {}) {
+  if (!dest || !direct || !direct.ini || typeof direct.ini !== 'object') return []
+  const written = []
+  for (const [file, lines] of Object.entries(direct.ini)) {
+    if (!Array.isArray(lines) || lines.length === 0) continue
+    const target = path.join(dest, file)
+    const body = lines
+      .map((line) => String(line).replace(/\{root:dest\}/g, dest))
+      .join('\r\n')
+    let existing = ''
+    try {
+      existing = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : ''
+    } catch {
+      existing = ''
+    }
+    // A php.ini that already turns the extension on is the user's business, not ours.
+    if (/^\s*extension\s*=\s*"?(?:php_)?ffi(?:\.dll)?"?\s*$/im.test(existing)) {
+      log(`${file} already enables the extension; left untouched`)
+      continue
+    }
+    const next = existing
+      ? `${existing.replace(/\s*$/, '')}\r\n\r\n; dsh-rust-anything: added so the check passes\r\n${body}\r\n`
+      : `; written by dsh-rust-anything\r\n${body}\r\n`
+    fs.writeFileSync(target, next)
+    log(`wrote ${target}`)
+    written.push(target)
+  }
+  return written
+}
+
 async function installDirect(item, direct, context) {
   const { run, log, root, env } = context
   const cache = path.join(root, 'cache')
@@ -668,6 +714,10 @@ async function installDirect(item, direct, context) {
       }
     }
     log(`unpacked into ${dest}`)
+    // Some archives ship an extension but no active ini, so the check fails even though the DLL is
+    // right there: portable PHP has php_ffi.dll in ext\ and no php.ini at all, and rust-anything's
+    // PHP bridge needs FFI. `direct.ini` names the file to create (or append to).
+    applyIni(dest, direct, log)
   }
   const dirs = (direct.path || []).map((entry) => entry
     .replace('{root:dest}', dest || '')

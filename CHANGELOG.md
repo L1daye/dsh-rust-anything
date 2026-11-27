@@ -4,6 +4,7 @@
 
 ### 新增
 
+- **PHP 装上但 doctor 仍报缺**：便携版 PHP 自带 `php_ffi.dll` 却没有 `php.ini`，所以扩展从不加载，doctor 的 PHP 检查卡在 "FFI extension not loaded"（rust-anything 的 PHP 桥正是 FFI）。新增 `direct.ini`：解压后写 `php.ini`（`extension_dir` 指向 `<dest>\ext`、`extension=ffi`、`ffi.enable=true`）；已有 ini 只在未开启该扩展时追加，绝不覆盖用户配置。
 - **`Android adb` 安装项**：rust-anything 5.x 的 doctor 会检查 adb，而 NDK 里不含它（adb 在独立的 platform-tools 包里）。现在 `bootstrap.js` 下载 `platform-tools-latest-windows.zip`、flatten 解压到 `<root>/platform-tools`、把该目录写进机器 PATH；`android` 与 `all` 两个 plan 都会带上它。
 ## 0.1.1
 

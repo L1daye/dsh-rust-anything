@@ -6,6 +6,7 @@
 // Behaviour is covered by tests/clienttest.mjs (the MCP client) and tests/hosttest.mjs (apply()).
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -190,6 +191,23 @@ try {
       && adb.direct.flatten === true && adb.direct.path.includes('{root:dest}')
   })())
   check('the android plan installs adb with the NDK', boot.PLANS.android.includes('Android adb') && boot.PLANS.android.includes('Android NDK'))
+  // Portable PHP ships php_ffi.dll but no php.ini, so nothing loads it and doctor fails on
+  // "FFI extension not loaded" — which is exactly what the PHP bridge needs.
+  check('php enables FFI after unpacking', (() => {
+    const ini = boot.CHECKS.php && boot.CHECKS.php.direct && boot.CHECKS.php.direct.ini
+    const lines = ini && ini['php.ini']
+    return Array.isArray(lines) && lines.some((line) => /^extension=ffi$/.test(line)) && lines.some((line) => /^ffi\.enable=true$/.test(line))
+  })())
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ra-ini-'))
+    const direct = { ini: { 'php.ini': ['extension_dir="{root:dest}\\ext"', 'extension=ffi', 'ffi.enable=true'] } }
+    const first = boot.applyIni(dir, direct, () => {})
+    const body = fs.readFileSync(path.join(dir, 'php.ini'), 'utf8')
+    check('applyIni writes the ini with the destination expanded', first.length === 1 && body.includes('extension=ffi') && body.includes(dir))
+    const second = boot.applyIni(dir, direct, () => {})
+    check('applyIni leaves an ini that already enables ffi alone', second.length === 0, `${second.length} rewritten`)
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
   check('agents and the MCP server are never installed', boot.CHECKS.agents.skip === 'agent' && boot.CHECKS['mcp server'].skip === 'self')
   check('cargo comes from the official rustup', /win\.rustup\.rs/.test(JSON.stringify(boot.CHECKS.cargo)))
   check('a CN mirror is available for rustup', /tuna\.tsinghua\.edu\.cn/.test(boot.MIRRORS.cn.RUSTUP_DIST_SERVER) && Boolean(boot.MIRRORS.cn.RUSTUP_UPDATE_ROOT))
