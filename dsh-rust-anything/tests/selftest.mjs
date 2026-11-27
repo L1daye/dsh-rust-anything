@@ -113,6 +113,9 @@ try {
     check('the packaged guide still contains the upstream fallback', /If the MCP tools are not available/.test(guide))
     check('sanitizeGuide removes the fallback paragraph', !/If the MCP tools are not available/.test(host.sanitizeGuide(guide)))
     check('sanitizeGuide keeps the rest of the guide', host.sanitizeGuide(guide).length > guide.length - 600 && /Migration to Rust with rust-anything/.test(host.sanitizeGuide(guide)))
+    // `rust-anything analyze --lang` enumerates ten values; the guide has to name them all or the
+    // model treats Kotlin/PowerShell as unsupported and plans around a limitation that is not there.
+    check('the guide lists every language the engine detects', /Kotlin/.test(guide) && /PHP/.test(guide) && /C#/.test(guide) && /PowerShell/.test(guide))
   }
   check('host exports apply()', typeof host.apply === 'function')
   check('host exports inject', Array.isArray(host.inject) && host.inject.includes('tools'))

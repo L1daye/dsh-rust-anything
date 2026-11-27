@@ -718,6 +718,13 @@ async function installDirect(item, direct, context) {
     // right there: portable PHP has php_ffi.dll in ext\ and no php.ini at all, and rust-anything's
     // PHP bridge needs FFI. `direct.ini` names the file to create (or append to).
     applyIni(dest, direct, log)
+    // The archive has done its job once its contents are on disk. Keeping it turned cache/ into a
+    // second copy of every toolchain (937 MB before it was first cleared) with no way to tell which
+    // copy the plugin actually runs from.
+    try {
+      fs.rmSync(file, { force: true })
+      log(`removed ${name} from the cache`)
+    } catch { /* a locked archive is not worth failing the install over */ }
   }
   const dirs = (direct.path || []).map((entry) => entry
     .replace('{root:dest}', dest || '')

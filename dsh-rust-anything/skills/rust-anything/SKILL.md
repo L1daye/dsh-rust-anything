@@ -14,9 +14,10 @@ the decisions, researches the dependencies, records the whole app, puts a Rust f
 of the original, runs the steps below for every unit, then lifts the app to a standalone Rust
 binary (or, for a library, one pure Rust crate). CLIs, HTTP servers and libraries.
 
-Languages: TypeScript/JavaScript, Python, C, Go, Ruby, Java. The language is detected; `--lang`
-overrides it. The steps are the same everywhere; only the bridge differs (napi-rs or wasm for
-TS, PyO3, a C ABI, cgo, a magnus extension, JNI), and the original's callers keep their API.
+Languages: TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, C# and PowerShell.
+The language is detected; `--lang` overrides it. The steps are the same everywhere; only the bridge
+differs (napi-rs or wasm for TS, PyO3, a C ABI, cgo, a magnus extension, JNI, PHP FFI, P/Invoke),
+and the original's callers keep their API.
 For PHP: `analyze`, and for a whole app `app record`, `app replay` and
 `app front-door` (CLIs, and servers run with `php -S 127.0.0.1:{port} router.php`); `bridge` does not
 take PHP units yet, so tell the user before planning a PHP port past the front door. C# works
