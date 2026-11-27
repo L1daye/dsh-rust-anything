@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.3
+
+### 变更
+
+- **撤掉 `ra_cli` 的沙箱包裹**：0.1.1 给它接了 `sandboxPolicy` + `ctx.sandbox.confine`，但 MCP 的 24 个工具——真正会写盘的 `build`/`gate`/`app_lift`——从来不经过这条路径，而默认会话策略是 `danger-full-access`，这段代码在常规使用下从不执行。留着一半执行的边界比没有更容易让人误判，所以整段删掉，插件不再声称约束执行。
+- **未知参数改为警告**：`validateToolArgs` 之前拒绝 schema 之外字段。MCP 里未声明 `additionalProperties` 等于"任意字段都算合法"，拒绝会误伤确实接受额外字段的工具。现在 required 与类型仍然硬性校验，未知字段只在结果里附一条提示。
+
+### 新增
+
+- **`ra_install` 走 GitHub 镜像**：有些网络完全连不上 github.com（`fetch failed`）。现在直连失败后依次尝试 `ghproxy.net` / `gh-proxy.com` / `ghfast.top`；`api.github.com` 被镜像拒绝，所以 `latest` 的 tag 改从 `releases/latest` 的 Location 头里取，资产 URL 由 tag 推导（可预测才可镜像）。直连仍排第一，网络正常时不受影响。
 ## 0.1.2
 
 ### 新增

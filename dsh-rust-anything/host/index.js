@@ -264,49 +264,6 @@ async function versionOf(resolved, refresh = false) {
 }
 
 /**
- * Confine one `ra_cli` invocation to the calling session's sandbox.
- *
- * The policy is read from the session; `danger-full-access` (and a session with no policy) runs as
- * before. A stricter mode wraps the argv through `ctx.sandbox.confine`. The backend is probed once:
- * on a host where no backend is usable the request is refused, and failing every call would be worse
- * than saying so, so that refusal is recorded and later calls run unconfined with a note.
- *
- * @param {string[]} argv - the full argv, program first.
- * @param {string} cwd - working directory (passed through untouched).
- * @param {{agent?: {session?: object}, signal?: AbortSignal}} [exec] - the tool call context.
- * @returns {Promise<{argv: string[], note: string|null}>}
- */
-async function confineCli(argv, cwd, exec) {
-  if (!sandboxServices || !exec || !exec.agent || !exec.agent.session) return { argv, note: null }
-  if (sandboxBackend === 'unavailable') return { argv, note: null }
-  let policy
-  try {
-    policy = sandboxServices.policy.resolve({ session: exec.agent.session })
-  } catch {
-    return { argv, note: null }
-  }
-  const mode = policy && policy.mode
-  if (!mode || mode === 'danger-full-access') return { argv, note: mode ? `sandbox: ${mode}` : null }
-  try {
-    const wrapped = await sandboxServices.sandbox.confine(argv, policy, exec.signal)
-    const next = wrapped && Array.isArray(wrapped.argv) ? wrapped.argv : null
-    if (!next || next.length === 0) throw new Error('the sandbox returned no argv')
-    sandboxBackend = 'usable'
-    return { argv: next, note: `sandbox: ${mode}, confined` }
-  } catch (error) {
-    const message = String(error && error.message ? error.message : error)
-    if (/no sandbox backend is usable/i.test(message)) {
-      sandboxBackend = 'unavailable'
-      console.error(`[dsh-rust-anything] no sandbox backend on this host; ra_cli runs unconfined: ${message}`)
-      return { argv, note: null }
-    }
-    // Anything else is a refusal this call must honour: running unconfined would break the session's
-    // own policy, which is the one boundary left once approvals are out of the picture.
-    throw new Error(`ra_cli not run: the session sandbox (${mode}) refused to confine the command — ${message}`)
-  }
-}
-
-/**
  * The upstream release pin, read once. `SHA256SUMS` identifies the archive; the executable inside it
  * is what actually runs, and until now nothing looked at those bytes.
  */
@@ -778,6 +735,73 @@ function findTar() {
  * @param {object} config plugin settings
  * @param {{version?:string, force?:boolean, signal?:AbortSignal, log?:(line:string)=>void}} options
  */
+// Some networks cannot reach github.com at all: `fetch` fails, the API answers nothing. These
+// mirrors proxy github.com release URLs (assets and SHA256SUMS) but refuse api.github.com, so the
+// tag comes from the releases/latest redirect and every download walks this list. Empty string is
+// the direct attempt, which stays first so nothing slows down on a network that works.
+const GITHUB_MIRRORS = ['', 'https://ghproxy.net/', 'https://gh-proxy.com/', 'https://ghfast.top/']
+
+function mirrorUrl(prefix, url) {
+  return prefix ? `${prefix}${url}` : url
+}
+
+async function fetchTextVia(url, log = () => {}) {
+  const failures = []
+  for (const prefix of GITHUB_MIRRORS) {
+    const where = prefix || 'direct'
+    try {
+      const text = await httpText(mirrorUrl(prefix, url))
+      if (prefix) log(`fetched through ${prefix}`)
+      return text
+    } catch (error) {
+      failures.push(`${where}: ${String(error && error.message ? error.message : error)}`)
+    }
+  }
+  throw new Error(`${url} unreachable — ${failures.join('; ')}`)
+}
+
+async function fetchBinaryVia(url, to, log = () => {}) {
+  const failures = []
+  for (const prefix of GITHUB_MIRRORS) {
+    const where = prefix || 'direct'
+    try {
+      const bytes = await httpBinary(mirrorUrl(prefix, url), to)
+      if (prefix) log(`downloaded through ${prefix}`)
+      return bytes
+    } catch (error) {
+      failures.push(`${where}: ${String(error && error.message ? error.message : error)}`)
+    }
+  }
+  throw new Error(`${url} unreachable — ${failures.join('; ')}`)
+}
+
+/**
+ * Resolve the release tag for `latest`.
+ *
+ * The API is tried first because it is the only source that states the tag outright. When it is
+ * unreachable, the `releases/latest` redirect carries the tag in its Location header and the
+ * mirrors do serve that URL, so a filtered network still gets a working install.
+ */
+async function resolveReleaseTag(version) {
+  if (version !== 'latest') return version
+  try {
+    const release = await httpJson(`https://api.github.com/repos/${REPO}/releases/latest`)
+    if (release && release.tag_name) return String(release.tag_name)
+  } catch { /* the API is often the first thing a filtered network loses */ }
+  for (const prefix of GITHUB_MIRRORS.filter(Boolean)) {
+    try {
+      const response = await fetch(mirrorUrl(prefix, `https://github.com/${REPO}/releases/latest`), {
+        headers: { 'user-agent': 'dsh-rust-anything' },
+        redirect: 'manual',
+      })
+      const location = response.headers.get('location')
+      const match = location ? /\/tag\/([^/?#]+)/.exec(location) : null
+      if (match) return match[1]
+    } catch { /* next mirror */ }
+  }
+  throw new Error('cannot resolve the latest rust-anything release: the GitHub API and every mirror failed')
+}
+
 async function installCli(config, options = {}) {
   const log = options.log || (() => {})
   const paths = statePaths(config)
@@ -791,22 +815,20 @@ async function installCli(config, options = {}) {
 
   if (typeof fetch === 'function' && asset) {
     try {
-      const releasePath = version === 'latest' ? 'latest' : `tags/${version}`
-      const release = await httpJson(`https://api.github.com/repos/${REPO}/releases/${releasePath}`)
-      const tag = String(release.tag_name || version)
+      const tag = await resolveReleaseTag(version)
       const fileName = asset.name.replace('{v}', tag)
-      const wanted = (release.assets || []).find((entry) => entry.name === fileName)
-      if (!wanted) throw new Error(`release ${tag} has no asset ${fileName}`)
       const target = path.join(paths.root, tag)
       const binary = path.join(target, EXE_NAME)
       if (existsFile(binary) && !options.force) {
         report.push(`rust-anything ${tag} is already in ${target} (pass force to re-download)`)
       } else {
+        // The asset URL is predictable from the tag, and a predictable URL is what a mirror needs.
+        const assetUrl = `https://github.com/${REPO}/releases/download/${tag}/${fileName}`
         const sumsUrl = `https://github.com/${REPO}/releases/download/${tag}/SHA256SUMS`
         const tmp = path.join(os.tmpdir(), `rust-anything-${Date.now()}-${fileName}`)
         log(`downloading ${fileName}`)
-        const bytes = await httpBinary(wanted.browser_download_url, tmp)
-        const sums = await httpText(sumsUrl)
+        const bytes = await fetchBinaryVia(assetUrl, tmp, log)
+        const sums = await fetchTextVia(sumsUrl, log)
         const expected = sums
           .split(/\r?\n/)
           .map((line) => line.trim().split(/\s+/))
@@ -951,6 +973,7 @@ export function validateToolArgs(tool, args) {
   const schema = tool && tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {}
   const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {}
   const required = Array.isArray(schema.required) ? schema.required : []
+  const warnings = []
   if (Object.prototype.toString.call(args) !== '[object Object]') {
     throw new Error(`${label}: expected an arguments object, got ${describeValue(args)}`)
   }
@@ -960,13 +983,18 @@ export function validateToolArgs(tool, args) {
     }
   }
   for (const [key, value] of Object.entries(args)) {
-    if (!Object.prototype.hasOwnProperty.call(properties, key) && schema.additionalProperties !== true) {
-      const known = Object.keys(properties)
-      throw new Error(`${label}: unknown argument \`${key}\`${known.length ? `; expected one of ${known.join(', ')}` : ''}`)
+    if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+      // Not an error. An undeclared `additionalProperties` means "anything goes" in MCP, and the
+      // engine forwards unknown fields, so refusing here would block a tool that takes an extra
+      // field the schema forgot to list. The model still needs to know the argument did nothing.
+      if (schema.additionalProperties !== true) {
+        warnings.push(`\`${key}\` is not in the tool's schema and may be ignored`)
+      }
+      continue
     }
     checkSchemaValue(`${label}.${key}`, value, properties[key])
   }
-  return true
+  return { ok: true, warnings }
 }
 
 // The engine reports a missing program by name and nothing else ("running cargo: program not found").
@@ -1315,9 +1343,8 @@ function cliTool(config) {
       const timeoutMs = Number.isFinite(args?.timeoutMs) ? Math.max(0, Math.trunc(args.timeoutMs)) : 180_000
       const cwd = args?.cwd ? path.resolve(base, String(args.cwd)) : (config.projectDir || base)
       const maxChars = Math.min(60_000, Math.max(500, Number.isFinite(args?.maxOutputChars) ? Math.trunc(args.maxOutputChars) : 8_000))
-      const confined = await confineCli([resolved.cli, ...argv], cwd, exec)
-      const result = await run(confined.argv[0], confined.argv.slice(1), { cwd, timeoutMs, signal: exec?.signal })
-      const command = confined.argv.map((part) => (/[\s"]/.test(part) ? JSON.stringify(part) : part)).join(' ')
+      const result = await run(resolved.cli, argv, { cwd, timeoutMs, signal: exec?.signal })
+      const command = [resolved.cli, ...argv].map((part) => (/[\s"]/.test(part) ? JSON.stringify(part) : part)).join(' ')
       const trim = (text) => {
         const value = text.trimEnd()
         if (value.length <= maxChars) return value
@@ -1334,7 +1361,6 @@ function cliTool(config) {
         ms: result.ms,
       }
       if (result.error) payload.error = result.error
-      if (confined.note) payload.sandbox = confined.note
       boardCache.clear()
       return payload
     },
@@ -1726,12 +1752,6 @@ export const inject = ['tools']
 // Electron process happens to sit in, which is what process.cwd() gave before.
 let workingDirectoryService = null
 
-// Filled by the injections below. `ra_cli` is the one place where a model can run an arbitrary
-// program, and the child it starts is not the Harness's shell tool, so nothing confines it unless
-// this plugin asks. `sandboxBackend` remembers a host with no usable backend: retrying a probe on
-// every call would turn one missing capability into a slow, failing tool.
-let sandboxServices = null
-let sandboxBackend = 'unknown'
 
 /**
  * Where the base directory came from: `session` is the folder the user is working in, `projectDir`
@@ -1827,6 +1847,7 @@ export function apply(ctx, config) {
             blocks.push({ type: 'text', text: fallback })
           }
           if (value && value.ok === false) blocks.unshift({ type: 'text', text: `rust-anything ${tool.name} failed:` })
+          if (value && value.notice) blocks.push({ type: 'text', text: value.notice })
           if (value && value.hint) blocks.push({ type: 'text', text: value.hint })
           return blocks
         },
@@ -1835,9 +1856,12 @@ export function apply(ctx, config) {
         const client = runtime.client
         if (!client) throw new Error('the rust-anything MCP client is not running; call ra_status, then ra_install, then retry')
         const raw = args && typeof args === 'object' ? args : {}
-        validateToolArgs(tool, raw)
+        const validation = validateToolArgs(tool, raw)
         const base = resolveBaseDir(settings, exec)
         const result = await client.callTool(tool.name, normalizeToolArgs(raw, base), { signal: exec?.signal, timeoutMs: settings.callTimeoutMs })
+        if (validation.warnings.length) {
+          result.notice = `argument note: ${validation.warnings.join('; ')}`
+        }
         if (result && result.ok === false) {
           const text = Array.isArray(result.content)
             ? result.content.filter((block) => block && typeof block.text === 'string').map((block) => block.text).join('\n')
@@ -1933,12 +1957,6 @@ export function apply(ctx, config) {
 
   ctx.inject(['workingDirectory'], (wdCtx) => {
     workingDirectoryService = wdCtx.workingDirectory || null
-  })
-
-  ctx.inject(['sandboxPolicy', 'sandbox'], (sandboxCtx) => {
-    if (sandboxCtx && sandboxCtx.sandboxPolicy && sandboxCtx.sandbox) {
-      sandboxServices = { policy: sandboxCtx.sandboxPolicy, sandbox: sandboxCtx.sandbox }
-    }
   })
 
   // `rust-anything mcp` answers `initialize` with the method itself (profile → record → port one unit

@@ -102,7 +102,11 @@ try {
     check('an out-of-range integer is rejected', !accepts({ crate: 'c', 'port': 70000 }) && !accepts({ crate: 'c', 'port': 0 }))
     check('a value outside the enum is rejected', !accepts({ crate: 'c', mode: 'slow' }))
     check('a mistyped array item is rejected', !accepts({ crate: 'c', run: ['ok', 7] }))
-    check('an unknown argument is rejected', !accepts({ crate: 'c', extra: 1 }))
+    // MCP treats an undeclared additionalProperties as "anything goes", so an unknown field must not
+    // block a tool that really does take it. The caller still has to be told the argument did nothing.
+    const unknown = host.validateToolArgs(tool, { crate: 'c', extra: 1 })
+    check('an unknown argument warns instead of failing', unknown.ok === true && unknown.warnings.length === 1 && /extra/.test(unknown.warnings[0]), JSON.stringify(unknown))
+    check('a valid call carries no warnings', host.validateToolArgs(tool, { crate: 'c' }).warnings.length === 0)
     check('a non-object payload is rejected', !accepts('crate=rust/x'))
   }
 
@@ -133,6 +137,19 @@ try {
     const lock = JSON.parse(read('upstream-lock.json'))
     const pinned = lock.platforms && lock.platforms['win32-x64']
     check('the upstream lock pins a tag', typeof lock.tag === 'string' && /^v\d/.test(lock.tag))
+    // A network that cannot reach github.com installs through a mirror; the direct attempt must stay
+    // first so a working network is not slowed down by a proxy hop.
+    check('the installer keeps a direct attempt ahead of the mirrors', (() => {
+      const src = read('host/index.js')
+      const list = /const GITHUB_MIRRORS = \[([^\]]*)\]/.exec(src)
+      if (!list) return false
+      const entries = list[1].split(',').map((entry) => entry.trim())
+      return entries[0] === "''" && entries.some((entry) => /ghproxy\.net/.test(entry))
+    })())
+    check('a tag can be resolved without the API', (() => {
+      const src = read('host/index.js')
+      return /redirect: 'manual'/.test(src) && /releases\/latest/.test(src) && /get\('location'\)/.test(src)
+    })())
     check('the upstream lock pins executable bytes', Boolean(pinned) && /^[0-9a-f]{64}$/.test(pinned.executableSha256))
     check('an unpinned tag is reported, not rejected', host.verifyExecutable('v0.0.0-unpinned', path.join(PKG, 'package.json')).pinned === false)
   }
