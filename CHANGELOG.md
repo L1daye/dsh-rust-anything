@@ -5,6 +5,8 @@
 ### 修复
 
 - **`plan` / `port` 档位漏掉 CLI 新增的工具**：档位原本按写死的名字列表过滤，CLI 2.1.0 之后新增的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 在任何档位下都不可见（`port` 是日常档，等于 `go` 永远用不上）。现在档位由每个工具的 `annotations.readOnlyHint` 判定：`plan` = 只读工具 + `bridge`/`refresh`/`profile`，`port`/`all` = 服务器列出的全部。旧 `bridge.json` 里的名字列表会被识别为对应档位并迁移。
+- **上游文档里的 CLI 回退指引已删除**：`SKILL.md` 里那段「MCP 工具不可用就用 CLI，装不上就跑 `rust-anything setup`」会与本插件的前言互相矛盾，模型可能照着回退。现在注册与写盘时删掉该段（其余逐字节不变），并在 `THIRD-PARTY-NOTICES.md` 记录删改内容。
+- **调用前按 `inputSchema` 校验参数**：引擎的 MCP reader 把类型错的必填字段当成「未提供」，`{"port":"8080"}` 会静默退回默认值。现在校验 required / type / enum / 数组元素 / 数值范围 / 未知字段，报错直接点名字段与期望类型。
 
 ### 新增
 
@@ -17,33 +19,11 @@
 
 支撑这个正式版的验证：四套测试 166 条断言、CI 在 `windows-latest` × node 22/24 + `actionlint` 上全绿、rc.1 与 rc.3 两台真机实测。范围仍是**仅 Windows**。
 
-## Unreleased
-
-### 修复
-
-- **`plan` / `port` 档位漏掉 CLI 新增的工具**：档位原本按写死的名字列表过滤，CLI 2.1.0 之后新增的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 在任何档位下都不可见（`port` 是日常档，等于 `go` 永远用不上）。现在档位由每个工具的 `annotations.readOnlyHint` 判定：`plan` = 只读工具 + `bridge`/`refresh`/`profile`，`port`/`all` = 服务器列出的全部。旧 `bridge.json` 里的名字列表会被识别为对应档位并迁移。
-
-### 新增
-
-- **MCP `instructions` 注入系统提示**：`initialize` 返回的那份「profile → record → port」总纲之前被丢弃，模型只看得到工具描述、不知道顺序。现在挂到 `MCP_SERVERS` 段（`interpolate: false`），并附一句禁止回退到 CLI / `rust-anything setup` / 改 PATH。
-- **skill 改为运行时注册**：`ctx.skills.register()` 把 skill 注册到宿主，版本随插件走、卸载即注销；`~/.dsh/skills/rust-anything/` 的拷贝保留给读目录的消费者。`ra_status` 新增 `skill.registered`。
-
 ## 0.1.0-beta.4
 
 ### 样式
 
 - 输入框左侧的「工具面」chip 改为与 `dsh-craft-anything` 同一视觉：`border-l2` 细边、12px、`5px 9px`、`radius 8`、7px 圆点、9px 箭头；**规划/移植/全部为橙色**（`state-warn-primary`，文字+边框+圆点同色），**关闭为灰色**（`label-secondary` + idle 圆点 + 0.7 透明度）；展开菜单只改背景，不再把档位色刷成白色。
-
-## Unreleased
-
-### 修复
-
-- **`plan` / `port` 档位漏掉 CLI 新增的工具**：档位原本按写死的名字列表过滤，CLI 2.1.0 之后新增的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 在任何档位下都不可见（`port` 是日常档，等于 `go` 永远用不上）。现在档位由每个工具的 `annotations.readOnlyHint` 判定：`plan` = 只读工具 + `bridge`/`refresh`/`profile`，`port`/`all` = 服务器列出的全部。旧 `bridge.json` 里的名字列表会被识别为对应档位并迁移。
-
-### 新增
-
-- **MCP `instructions` 注入系统提示**：`initialize` 返回的那份「profile → record → port」总纲之前被丢弃，模型只看得到工具描述、不知道顺序。现在挂到 `MCP_SERVERS` 段（`interpolate: false`），并附一句禁止回退到 CLI / `rust-anything setup` / 改 PATH。
-- **skill 改为运行时注册**：`ctx.skills.register()` 把 skill 注册到宿主，版本随插件走、卸载即注销；`~/.dsh/skills/rust-anything/` 的拷贝保留给读目录的消费者。`ra_status` 新增 `skill.registered`。
 
 ## 0.1.0-beta.3
 
@@ -51,17 +31,6 @@
 
 - **环境卡把 agent 行当成可装项**：新版 CLI 把 `agents` 拆成 `Claude Code mcp` / `Claude Code skill` / `Gemini CLI mcp`，卡片按精确名字查 `NOT_INSTALLABLE` 时漏掉它们，于是显示「装」按钮并计进「待装」。现在与 `neverInstalled()` 同一判据，一律标成不装；
 - **stale 任务的「仍缺少 …」**：那行是任务结束时的快照，重启打断后它与卡片上方的行互相矛盾；任务 stale 时不再显示。
-
-## Unreleased
-
-### 修复
-
-- **`plan` / `port` 档位漏掉 CLI 新增的工具**：档位原本按写死的名字列表过滤，CLI 2.1.0 之后新增的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 在任何档位下都不可见（`port` 是日常档，等于 `go` 永远用不上）。现在档位由每个工具的 `annotations.readOnlyHint` 判定：`plan` = 只读工具 + `bridge`/`refresh`/`profile`，`port`/`all` = 服务器列出的全部。旧 `bridge.json` 里的名字列表会被识别为对应档位并迁移。
-
-### 新增
-
-- **MCP `instructions` 注入系统提示**：`initialize` 返回的那份「profile → record → port」总纲之前被丢弃，模型只看得到工具描述、不知道顺序。现在挂到 `MCP_SERVERS` 段（`interpolate: false`），并附一句禁止回退到 CLI / `rust-anything setup` / 改 PATH。
-- **skill 改为运行时注册**：`ctx.skills.register()` 把 skill 注册到宿主，版本随插件走、卸载即注销；`~/.dsh/skills/rust-anything/` 的拷贝保留给读目录的消费者。`ra_status` 新增 `skill.registered`。
 
 ## 0.1.0-beta.2
 
@@ -81,17 +50,6 @@
 - **支持 DSH `0.2.2-rc.1`**：`engines.dsh` 从 `>=0.2.1-rc.2` 改为 `>=0.2.2-rc.1`。在隔离 profile 上用 rc.1 无头引导验证：`/rust-anything/api/token` 返回 64 hex、`/api/surface` 正常响应、`http.token` 落盘；页面未逐屏验收；
 - **认识 `DSH_HOME`**：插件与 `install.ps1` 之前只认 `%USERPROFILE%\.dsh`，在设置了 `DSH_HOME` 的机器上会写到错误的家目录（实测会污染真实 home 的 `plugins-data`）；现在两者均优先取 `DSH_HOME`；
 - **修掉 token 从不落盘**：`createHttpAuth` 抽成 `http-util.js` 时签名改了、函数体还引用已不存在的 `paths`，异常被静默 `catch` 吞掉。页面一直靠 `/api/token` 引导才没暴露；现在写对路径并且失败会告警。
-## Unreleased
-
-### 修复
-
-- **`plan` / `port` 档位漏掉 CLI 新增的工具**：档位原本按写死的名字列表过滤，CLI 2.1.0 之后新增的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 在任何档位下都不可见（`port` 是日常档，等于 `go` 永远用不上）。现在档位由每个工具的 `annotations.readOnlyHint` 判定：`plan` = 只读工具 + `bridge`/`refresh`/`profile`，`port`/`all` = 服务器列出的全部。旧 `bridge.json` 里的名字列表会被识别为对应档位并迁移。
-
-### 新增
-
-- **MCP `instructions` 注入系统提示**：`initialize` 返回的那份「profile → record → port」总纲之前被丢弃，模型只看得到工具描述、不知道顺序。现在挂到 `MCP_SERVERS` 段（`interpolate: false`），并附一句禁止回退到 CLI / `rust-anything setup` / 改 PATH。
-- **skill 改为运行时注册**：`ctx.skills.register()` 把 skill 注册到宿主，版本随插件走、卸载即注销；`~/.dsh/skills/rust-anything/` 的拷贝保留给读目录的消费者。`ra_status` 新增 `skill.registered`。
-
 ## 0.1.0-beta.1
 
 首个公开版本。功能齐了，范围也划清了：**Windows only，DSH `0.2.2-rc.3` 上端到端验证**。

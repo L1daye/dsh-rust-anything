@@ -72,6 +72,41 @@ try {
 
   // Host half and client half load.
   const host = await import(pathToFileURL(path.join(PKG, 'host', 'index.js')).href)
+  // The engine's MCP reader treats a mistyped field as omitted, so a wrong type has to be caught here
+  // or the call silently runs with a default the caller never asked for.
+  {
+    const tool = {
+      name: 'record',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          crate: { type: 'string' },
+          'port': { type: 'integer', minimum: 1, maximum: 65535 },
+          mode: { type: 'string', enum: ['fast', 'full'] },
+          run: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['crate'],
+      },
+    }
+    const accepts = (args) => { try { host.validateToolArgs(tool, args); return true } catch { return false } }
+    check('a valid call passes validation', accepts({ crate: 'rust/x', 'port': 8080, mode: 'fast', run: ['node', 'a.js'] }))
+    check('a missing required argument is rejected', !accepts({}))
+    check('a string where an integer belongs is rejected', !accepts({ crate: 'c', 'port': '8080' }))
+    check('an out-of-range integer is rejected', !accepts({ crate: 'c', 'port': 70000 }) && !accepts({ crate: 'c', 'port': 0 }))
+    check('a value outside the enum is rejected', !accepts({ crate: 'c', mode: 'slow' }))
+    check('a mistyped array item is rejected', !accepts({ crate: 'c', run: ['ok', 7] }))
+    check('an unknown argument is rejected', !accepts({ crate: 'c', extra: 1 }))
+    check('a non-object payload is rejected', !accepts('crate=rust/x'))
+  }
+
+  // Upstream tells the agent to fall back to the CLI and to run `rust-anything setup`, which
+  // registers other agents; leaving that paragraph in the prompt contradicts the preamble.
+  {
+    const guide = read('skills/rust-anything/SKILL.md')
+    check('the packaged guide still contains the upstream fallback', /If the MCP tools are not available/.test(guide))
+    check('sanitizeGuide removes the fallback paragraph', !/If the MCP tools are not available/.test(host.sanitizeGuide(guide)))
+    check('sanitizeGuide keeps the rest of the guide', host.sanitizeGuide(guide).length > guide.length - 600 && /Migration to Rust with rust-anything/.test(host.sanitizeGuide(guide)))
+  }
   check('host exports apply()', typeof host.apply === 'function')
   check('host exports inject', Array.isArray(host.inject) && host.inject.includes('tools'))
   check('host exports 4 surfaces', host.SURFACES && Object.keys(host.SURFACES).join(',') === 'off,plan,port,all')

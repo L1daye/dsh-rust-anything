@@ -523,9 +523,21 @@ Gemini CLI and OpenCode, not this Harness. -->
 
 `
 
+// The upstream guide tells the agent to fall back to the standalone CLI when the MCP tools are
+// missing, to `cargo install` it and to run `rust-anything setup` — which registers Claude Code,
+// Codex, Cursor, Gemini CLI and OpenCode, none of which is this Harness. Prepending a preamble is
+// not enough: two contradictory sentences in one prompt let the model pick either. The paragraph is
+// removed, and THIRD-PARTY-NOTICES.md records that this one paragraph is not upstream's.
+const CLI_FALLBACK = /^If the MCP tools are not available,[\s\S]*?\r?\n\r?\n/m
+
+/** The packaged guide with the advice that cannot be followed in this Harness removed. */
+export function sanitizeGuide(source) {
+  return String(source ?? '').replace(CLI_FALLBACK, '')
+}
+
 function composeSkill(name, source) {
   if (name !== 'SKILL.md') return source
-  return `${SKILL_PREAMBLE}${source}`
+  return `${SKILL_PREAMBLE}${sanitizeGuide(source)}`
 }
 
 /**
@@ -571,7 +583,7 @@ export function registerSkill(ctx, report = []) {
       provider: 'dsh-rust-anything',
       source: 'bundled',
       resourceBase: { kind: 'directory', path: SKILL_SRC.split(path.sep).join('/') },
-      content: `${SKILL_PREAMBLE}${body}`,
+      content: composeSkill('SKILL.md', body),
     })
     report.push('registered the rust-anything skill on the Harness')
     skillRegistration = { ok: true, error: null }
@@ -840,9 +852,77 @@ export function normalizeToolArgs(args, base) {
   return out
 }
 
+/**
+ * Check one call's arguments against the server's own `inputSchema`.
+ *
+ * The engine's MCP reader treats a mistyped optional field as omitted, so `{"port":"8080"}` does not
+ * fail — it silently runs with the default and the caller believes it set the value. Catching that
+ * here turns a wrong result into a message naming the field and the expected type.
+ *
+ * @param {{name?: string, inputSchema?: object}} tool - the `tools/list` entry.
+ * @param {object} args - the arguments as the model sent them.
+ * @returns {true} when the arguments satisfy the schema.
+ */
+export function validateToolArgs(tool, args) {
+  const label = (tool && tool.name) || 'tool'
+  const schema = tool && tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {}
+  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {}
+  const required = Array.isArray(schema.required) ? schema.required : []
+  if (Object.prototype.toString.call(args) !== '[object Object]') {
+    throw new Error(`${label}: expected an arguments object, got ${describeValue(args)}`)
+  }
+  for (const key of required) {
+    if (!Object.prototype.hasOwnProperty.call(args, key)) {
+      throw new Error(`${label}: missing required argument \`${key}\``)
+    }
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (!Object.prototype.hasOwnProperty.call(properties, key) && schema.additionalProperties !== true) {
+      const known = Object.keys(properties)
+      throw new Error(`${label}: unknown argument \`${key}\`${known.length ? `; expected one of ${known.join(', ')}` : ''}`)
+    }
+    checkSchemaValue(`${label}.${key}`, value, properties[key])
+  }
+  return true
+}
+
+function describeValue(value) {
+  if (typeof value === 'string') return `"${value.length > 40 ? `${value.slice(0, 40)}…` : value}"`
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) return String(value)
+  if (Array.isArray(value)) return 'an array'
+  return typeof value
+}
+
+function checkSchemaValue(at, value, schema) {
+  if (!schema || typeof schema !== 'object') return
+  // A union cannot be validated by type alone; the server decides.
+  if (Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)) return
+  const type = schema.type
+  if (type === 'array') {
+    if (!Array.isArray(value)) throw new Error(`${at}: expected an array, got ${describeValue(value)}`)
+    if (schema.items) for (const [index, item] of value.entries()) checkSchemaValue(`${at}[${index}]`, item, schema.items)
+  } else if (type === 'integer') {
+    if (!Number.isSafeInteger(value)) throw new Error(`${at}: expected an integer, got ${describeValue(value)}`)
+  } else if (type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${at}: expected a number, got ${describeValue(value)}`)
+  } else if (type === 'boolean') {
+    if (typeof value !== 'boolean') throw new Error(`${at}: expected true or false, got ${describeValue(value)}`)
+  } else if (type === 'string') {
+    if (typeof value !== 'string') throw new Error(`${at}: expected a string, got ${describeValue(value)}`)
+  } else if (type === 'object') {
+    if (Object.prototype.toString.call(value) !== '[object Object]') throw new Error(`${at}: expected an object, got ${describeValue(value)}`)
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    throw new Error(`${at}: expected one of ${schema.enum.join(', ')}, got ${describeValue(value)}`)
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (typeof schema.minimum === 'number' && value < schema.minimum) throw new Error(`${at}: expected at least ${schema.minimum}, got ${value}`)
+    if (typeof schema.maximum === 'number' && value > schema.maximum) throw new Error(`${at}: expected at most ${schema.maximum}, got ${value}`)
+  }
+}
+
 // Subcommands whose second argument is a crate folder; the CLI has the same relative-path bug.
 const CRATE_SUBCOMMANDS = new Set(['build', 'diff', 'bench', 'gate', 'shadow', 'refresh', 'record'])
-
 /** Fix `ra_cli ["build", "rust/foo-rs"]` the same way, without touching any other argument. */
 export function normalizeCliArgs(argv, base) {
   if (!Array.isArray(argv) || argv.length < 2) return argv
@@ -1625,8 +1705,10 @@ export function apply(ctx, config) {
       async execute(args, exec) {
         const client = runtime.client
         if (!client) throw new Error('the rust-anything MCP client is not running; call ra_status, then ra_install, then retry')
+        const raw = args && typeof args === 'object' ? args : {}
+        validateToolArgs(tool, raw)
         const base = resolveBaseDir(settings, exec)
-        return client.callTool(tool.name, normalizeToolArgs(args || {}, base), { signal: exec?.signal, timeoutMs: settings.callTimeoutMs })
+        return client.callTool(tool.name, normalizeToolArgs(raw, base), { signal: exec?.signal, timeoutMs: settings.callTimeoutMs })
       },
     }
   }

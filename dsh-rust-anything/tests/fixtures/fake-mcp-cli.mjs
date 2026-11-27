@@ -53,7 +53,13 @@ process.stdin.on('data', (chunk) => {
           tools: TOOLS.map(([name, readOnly]) => ({
             name,
             description: `fake ${name}`,
-            inputSchema: { type: 'object', properties: { crate: { type: 'string' } }, required: [] },
+            // Realistic enough to exercise argument validation: the real server takes a project root,
+            // a repo path and a crate, and nothing else.
+            inputSchema: {
+              type: 'object',
+              properties: { root: { type: 'string' }, repo: { type: 'string' }, crate: { type: 'string' } },
+              required: [],
+            },
             annotations: { readOnlyHint: readOnly },
           })),
         })
