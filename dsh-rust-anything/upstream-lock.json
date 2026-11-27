@@ -1,15 +1,16 @@
 {
-  "_comment": "Supply-chain pin for the rust-anything release this plugin was last verified against. The archive hash comes from the publisher's SHA256SUMS (checked during install); executableSha256 is the hash of the extracted binary this repo actually ran its tests against. A release with no entry here is installed with the archive check only and reported as unpinned — it is not rejected, because the same publisher signs both.",
+  "_comment": "Supply-chain pin for the rust-anything release this plugin was last verified against. The archive hash comes from the publisher's SHA256SUMS (checked during install); executableSha256 is the hash of the extracted binary this repo actually ran against. A release with no entry here is installed with the archive check only and reported as unpinned — it is not rejected, because the same publisher signs both.",
   "repository": "https://github.com/erkamyaman/rust-anything",
-  "tag": "v2.1.0",
-  "recordedAt": "2026-11-27T14:40:00Z",
+  "tag": "v5.0.1",
+  "recordedAt": "2026-11-27T15:10:00Z",
   "platforms": {
     "win32-x64": {
-      "asset": "rust-anything-v2.1.0-x86_64-pc-windows-msvc.zip",
+      "asset": "rust-anything-v5.0.1-x86_64-pc-windows-msvc.zip",
       "executable": "rust-anything.exe",
-      "executableSha256": "7dbfdcd1b1262f3d78f6e0d08194484710dcb3235356ebd3c5d2e4fa2d8742e0",
-      "executableBytes": 24609792,
-      "reportedVersion": "rust-anything 2.1.0"
+      "executableSha256": "dac466332157cefc0611d01dcdf28c7ee21c771a4edbcd4063ca035d7e55fa9d",
+      "executableBytes": 30657536,
+      "reportedVersion": "rust-anything 5.0.1",
+      "toolCount": 24
     }
   }
 }
