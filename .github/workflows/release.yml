@@ -82,7 +82,8 @@ jobs:
             const text = fs.readFileSync("CHANGELOG.md", "utf8");
             const start = text.indexOf(`\n## ${version}\n`);
             if (start < 0) throw new Error(`no section for ${version}`);
-            const rest = text.slice(start + 4);
+            // Skip the heading line itself, not just the "## " prefix.
+            const rest = text.slice(text.indexOf("\n", start + 1) + 1);
             const next = rest.indexOf("\n## ");
             const body = (next < 0 ? rest : rest.slice(0, next)).trim();
             fs.writeFileSync("notes.md", `![dsh-rust-anything](https://github.com/${process.env.GITHUB_REPOSITORY}/raw/main/docs/banner-0.1.0.png)\n\n${body}\n`);
