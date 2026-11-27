@@ -1,11 +1,5 @@
 {
   "enabled": true,
-  "allow": [
-    "analyze",
-    "bridge",
-    "refresh",
-    "profile",
-    "map"
-  ],
+  "preset": "plan",
   "updatedAt": null
 }

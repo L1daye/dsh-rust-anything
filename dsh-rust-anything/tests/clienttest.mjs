@@ -37,7 +37,7 @@ try {
   check('state reports running with a pid', client.state.running && Number.isInteger(client.state.pid), `pid ${client.state.pid}`)
 
   const tools = await client.listTools()
-  check('tools/list returns 16 tools', tools.length === 16, `${tools.length}`)
+  check('tools/list returns 17 tools', tools.length === 17, `${tools.length}`)
   check('schemas pass through untouched', tools[0].inputSchema && tools[0].inputSchema.type === 'object' && tools[0].inputSchema.properties.crate)
   check('annotations survive', tools[0].annotations && tools[0].annotations.readOnlyHint === true)
 

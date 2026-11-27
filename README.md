@@ -14,7 +14,7 @@ Harness 里没有 rust-anything 的原生集成，手工加 MCP server 也容易
 
 这个插件**自带一个 minimal MCP stdio 客户端**（零 peer dependency），把 CLI 的工具注册成 `mcp__rust_anything__*`，并额外提供：
 
-- **工具面开关**——`off` / `plan`（5）/ `port`（11）/ `all`（16），想省 context 就关掉不用的；
+- **工具面开关**——`off` / `plan`（只读工具 + `bridge`/`refresh`/`profile`）/ `port` 与 `all`（服务器列出的全部工具），想省 context 就关掉不用的。档位由每个工具的 `readOnlyHint` 决定，**CLI 以后新增的工具会自动进档**，不需要改插件；
 - **移植看板**——哪些 unit 已移植、fallback 还剩多少、录制条数、最近一次 diff；
 - **环境体检 + 一键安装**——`doctor --json` 的结果按绿/黄/红点列出，缺什么装什么（cargo、MSVC、Node、Python、Go、JDK、Ruby、PHP、.NET、wasm32、wasm-bindgen、kotlinc、Android NDK…）；
 - **CLI 自更新**——从官方 release 下载、校验 `SHA256SUMS`、解包，随后就地重启自己的 MCP 客户端；
@@ -52,7 +52,9 @@ pwsh -File .\install.ps1           # 复制进 profile、登记 bundle、种工�
 | `ra_surface` | 切换工具面档位，或直接给 allow 白名单 |
 | `ra_bootstrap` | 按 plan 装工具链：后台跑、可取消、可看日志、断点续传 |
 
-MCP 侧 16 个工具按档位注册：`analyze` `bridge` `refresh` `profile` `map` `record` `build` `diff` `bench` `shadow` `gate` `app_record` `app_replay` `app_front_door` `app_wire` `app_lift`。
+MCP 侧的工具按档位注册，不需要在这里维护名单——`port` 与 `all` 放行服务器 `tools/list` 里的每一个工具，`plan` 只放行标了 `readOnlyHint` 的加上 `bridge`/`refresh`/`profile`。装机时 CLI 是 2.1.0，共 16 个；换成 4.0.0（22 个）后多出来的 `go`、`fuzz`、`package`、`enable`、`disable`、`report` 会自动出现在 `port`/`all` 里。
+
+工作流的两份文档不再只靠写盘：插件在启动时用 `ctx.skills.register()` 把 skill 注册到宿主，卸载即注销；`~/.dsh/skills/rust-anything/` 那份拷贝保留给需要读目录的消费者。MCP 握手返回的 `instructions`（上游那份「profile → record → port」总纲）会注入系统提示的 MCP 段，所以模型一开始就知道顺序，不用在对话里教。
 
 ## 页面
 

@@ -75,8 +75,14 @@ try {
   check('host exports apply()', typeof host.apply === 'function')
   check('host exports inject', Array.isArray(host.inject) && host.inject.includes('tools'))
   check('host exports 4 surfaces', host.SURFACES && Object.keys(host.SURFACES).join(',') === 'off,plan,port,all')
-  check('plan is the 5 planning steps', host.SURFACES.plan.allow.length === 5)
-  check('port is the 11 unit-level steps', host.SURFACES.port.allow.length === 11 && host.SURFACES.port.allow.includes('gate'))
+  // Tiers come from the server's annotations, not from name lists: a hardcoded list is what kept the
+  // tools added after 2.1.0 (go/fuzz/package/enable/disable/report) out of the everyday tiers.
+  check('every surface names a mode, never a fixed tool list', ['off', 'plan', 'port', 'all'].every((tier) => !('allow' in host.SURFACES[tier])))
+  check('plan is annotation-driven', host.SURFACES.plan.mode === 'plan')
+  check('port and all expose every listed tool', host.SURFACES.port.mode === 'all' && host.SURFACES.all.mode === 'all')
+  check('read-only is read from annotations', host.isReadOnlyTool({ name: 'analyze', annotations: { readOnlyHint: true } }) && !host.isReadOnlyTool({ name: 'build', annotations: { readOnlyHint: false } }) && !host.isReadOnlyTool({ name: 'x' }))
+  check('plan keeps the writing planning steps', ['bridge', 'refresh', 'profile'].every((name) => host.isPlanTool({ name })))
+  check('a tool nobody listed is not in plan', !host.isPlanTool({ name: 'go' }))
   const clientModule = await import(pathToFileURL(path.join(PKG, 'host', 'mcp-client.js')).href)
   check('mcp-client exports a factory', typeof clientModule.createRustAnythingClient === 'function')
 

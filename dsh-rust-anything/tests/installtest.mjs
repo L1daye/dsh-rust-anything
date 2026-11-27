@@ -65,7 +65,7 @@ function runInstaller(home, extraArgs = []) {
   check('dry run finds the package folder', /source\s*:\s*.*dsh-rust-anything\s*$/m.test(out.trim()), out.split('\n').find((line) => line.includes('source')) || '')
   check('dry run reports the copy target', out.includes('[dry] would copy package ->'))
   check('dry run would register the bundle', out.includes("[dry] would append 'dsh-rust-anything' to dsh.profile.bundles"))
-  check('dry run would seed the plan surface', /\[dry\] would write .*bridge\.json with 5 allow patterns/.test(out))
+  check('dry run would seed the plan tier', /\[dry\] would write .*bridge\.json with the 'plan' tier/.test(out))
   check('dry run touches nothing', !fs.existsSync(path.join(home, 'profiles', 'desktop', 'node_modules')))
 }
 
@@ -98,7 +98,7 @@ function runInstaller(home, extraArgs = []) {
   const pkg = JSON.parse(fs.readFileSync(path.join(profile, 'package.json'), 'utf8'))
   check('the profile lists the bundle', (pkg.dsh?.profile?.bundles || []).includes('dsh-rust-anything'), JSON.stringify(pkg.dsh?.profile?.bundles))
   const bridge = JSON.parse(fs.readFileSync(path.join(home, 'plugins-data', 'rust-anything', 'bridge.json'), 'utf8'))
-  check('the surface is seeded as plan (5 tools)', bridge.enabled === true && bridge.allow.length === 5, JSON.stringify(bridge.allow))
+  check('the surface is seeded as the plan tier', bridge.enabled === true && bridge.preset === 'plan', JSON.stringify(bridge))
 
   // A second install must move the previous copy aside instead of deleting it.
   const again = runInstaller(home)

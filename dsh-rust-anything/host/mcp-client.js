@@ -33,6 +33,10 @@ export function createRustAnythingClient(options) {
   let child = null
   let startedAt = null
   let serverInfo = null
+// The server's own operating instructions. The CLI ships the method here ("profile, then record,
+// then port one unit at a time"); tool descriptions alone do not carry it, so the host half lifts
+// this into the system prompt instead of dropping it on the floor.
+let instructions = null
   let nextId = 1
   let buffer = ''
   let stopped = false
@@ -177,6 +181,9 @@ export function createRustAnythingClient(options) {
       clientInfo: CLIENT_INFO,
     }, INIT_TIMEOUT_MS)
     serverInfo = (init && init.serverInfo) || null
+    instructions = init && typeof init.instructions === 'string' && init.instructions.trim()
+      ? init.instructions.trim()
+      : null
     // A notification: rust-anything answers only messages with an id, so this is fire-and-forget.
     try { send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) } catch { /* ignore */ }
     return serverInfo
@@ -234,6 +241,7 @@ export function createRustAnythingClient(options) {
         pid: child ? child.pid : null,
         startedAt,
         serverVersion: serverInfo ? serverInfo.version || null : null,
+        instructions,
         pending: pending.size,
       }
     },

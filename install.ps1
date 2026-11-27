@@ -134,12 +134,12 @@ if (-not $seed) {
 } elseif (Test-Path $bridgeFile) {
   Say "   bridge.json already exists — left untouched (delete it to re-seed the 'plan' surface)"
 } elseif ($DryRun) {
-  Say "   [dry] would write $bridgeFile with $($seed.allow.Count) allow patterns"
+  Say "   [dry] would write $bridgeFile with the '$($seed.preset)' tier"
 } else {
   New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($bridgeFile, ($seed | ConvertTo-Json -Depth 8), $utf8NoBom)
-  Say "   wrote $bridgeFile ($($seed.allow.Count) allow patterns = 'plan' surface)"
+  Say "   wrote $bridgeFile ('$($seed.preset)' tier)"
 }
 
 

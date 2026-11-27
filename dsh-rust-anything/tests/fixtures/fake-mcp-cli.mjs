@@ -5,10 +5,15 @@
 // It also emits one `notifications/tools/list_changed` after the second tools/list, to prove the
 // plugin re-lists and re-registers when the server says its tool set changed.
 
+// `go` stands in for a tool a later CLI adds: it is not read-only and not a planning step, so the
+// only way it can reach the daily `port` tier is the annotation-driven tiering itself. A hardcoded
+// name list is exactly what kept `go` (and `fuzz`/`package`/`enable`/`disable`/`report`) invisible
+// once the server moved past 2.1.0.
 const TOOLS = [
   ['analyze', true], ['bridge', false], ['refresh', false], ['profile', false], ['map', true],
   ['record', false], ['build', false], ['diff', false], ['bench', false], ['shadow', false], ['gate', false],
   ['app_record', false], ['app_replay', false], ['app_front_door', false], ['app_wire', false], ['app_lift', false],
+  ['go', false],
 ]
 
 let lists = 0
@@ -37,6 +42,9 @@ process.stdin.on('data', (chunk) => {
           protocolVersion: '2025-06-18',
           capabilities: { tools: {}, prompts: {} },
           serverInfo: { name: 'fake-rust-anything', version: '9.9.9' },
+          // The real server ships the migration method here; the plugin lifts it into the system
+          // prompt, so the fixture has to carry one for that path to be testable.
+          instructions: 'fake method: profile the hot path, record the original behaviour, then port one unit at a time.',
         })
         break
       case 'tools/list':

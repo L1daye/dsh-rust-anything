@@ -64,6 +64,8 @@ const sessionWithDir = { id: 'fake-session' }
 const fakeWorkingDirectory = { get: (session) => (session === sessionWithDir ? 'C:\\work\\from-session' : null) }
 const registry = new Map()
 const routes = new Map()
+const promptSections = new Map()
+const registeredSkills = []
 const cleanups = []
 const ctx = {
   tools: {
@@ -79,11 +81,37 @@ const ctx = {
     return disposer
   },
   inject: (deps, cb) => {
-    // The plugin injects `workingDirectory` to learn the Session's directory, and `webServer` to
-    // mount its management routes. Both are stubbed so the route layer can be tested without a
-    // Harness: every register() lands in `routes`.
+    // The plugin injects `workingDirectory` to learn the Session's directory, `webServer` to mount
+    // its management routes and `systemPrompt` to publish the server's own instructions. All three
+    // are stubbed so the whole host half runs without a Harness.
     if (!Array.isArray(deps)) return
     if (deps.includes('workingDirectory')) cb({ workingDirectory: fakeWorkingDirectory })
+    if (deps.includes('systemPrompt')) {
+      cb({
+        systemPrompt: {
+          getSectionOrder: (name) => (name === 'MCP_SERVERS' ? 3100 : 0),
+          section: (section) => {
+            promptSections.set(section.name, section)
+            return () => promptSections.delete(section.name)
+          },
+        },
+        effect: (fn) => fn(),
+      })
+    }
+    if (deps.includes('skills')) {
+      cb({
+        skills: {
+          register: (skill) => {
+            registeredSkills.push(skill)
+            return () => {
+              const at = registeredSkills.indexOf(skill)
+              if (at >= 0) registeredSkills.splice(at, 1)
+            }
+          },
+        },
+        effect: (fn) => fn(),
+      })
+    }
     if (deps.includes('webServer')) {
       cb({
         webServer: {
@@ -113,8 +141,25 @@ try {
   check('five ra_* tools registered', ['ra_status', 'ra_cli', 'ra_install', 'ra_surface', 'ra_bootstrap'].every((name) => registry.has(name)), [...registry.keys()].filter((n) => n.startsWith('ra_')).join(','))
 
   // No bridge.json yet: the surface is `all`, so every tool the fake lists is registered.
-  const up = await waitUntil(() => mcpNames().length === 16, 10_000)
-  check('MCP client starts with the plugin and registers 16 tools', up, `${mcpNames().length} registered`)
+  const up = await waitUntil(() => mcpNames().length === 17, 10_000)
+  check('MCP client starts with the plugin and registers every listed tool', up, `${mcpNames().length} registered`)
+  // The server's own instructions are the migration method; dropping them leaves a toolbox with no
+  // procedure, so they must reach the system prompt rather than the floor.
+  {
+    const section = promptSections.get('mcp:rust-anything')
+    check('the MCP instructions reach the system prompt', Boolean(section) && /fake method: profile/.test(section.text), section ? section.text.slice(0, 60) : 'no section')
+    check('the section sits where MCP servers belong', section && section.order === 3100 && section.interpolate === false, section ? `${section.order}/${section.interpolate}` : 'no section')
+    check('the section warns against the CLI fallback', Boolean(section) && /ra_install or ra_status/.test(section.text))
+  }
+  // The skill is registered on the Harness rather than only copied to disk, so an upgraded plugin
+  // cannot leave a stale skill behind and an uninstalled one cannot leave a ghost.
+  {
+    const skill = registeredSkills.find((entry) => entry.name === 'rust-anything')
+    check('the workflow skill is registered on the Harness', Boolean(skill), registeredSkills.map((entry) => entry.name).join(',') || 'none')
+    check('the registered skill carries the packaged body', Boolean(skill) && /Migration to Rust with rust-anything/.test(skill.content))
+    check('the registered skill keeps the dsh preamble', Boolean(skill) && skill.content.startsWith('<!-- dsh-rust-anything:'))
+    check('the registered skill has a description and a source', Boolean(skill) && skill.description.length > 20 && skill.source === 'bundled')
+  }
 
   const analyze = mcpTool('analyze')
   check('tool name carries the documented prefix', Boolean(analyze) && analyze.name === 'mcp__rust_anything__analyze')
@@ -133,7 +178,7 @@ try {
 
   const status = await registry.get('ra_status').execute({})
   check('ra_status sees the running client', status.mcp.running === true && status.mcp.serverVersion === '9.9.9', JSON.stringify({ running: status.mcp.running, version: status.mcp.serverVersion }))
-  check('ra_status counts 16/16 tools', status.mcp.total === 16 && status.mcp.visible === 16, `${status.mcp.visible}/${status.mcp.total}`)
+  check('ra_status counts 17/17 tools', status.mcp.total === 17 && status.mcp.visible === 17, `${status.mcp.visible}/${status.mcp.total}`)
   check('ra_status reads the bridged crate', status.project.crates.length === 1 && status.project.crates[0].cases === 3)
   check('ra_status sees the whole-app recording', status.project.app && status.project.app.cases === 2)
   check('ra_status renders text', /MCP:/.test(registry.get('ra_status').output.render({}, status)[0].text))
@@ -141,11 +186,15 @@ try {
   const plan = await registry.get('ra_surface').execute({ surface: 'plan' })
   check('ra_surface plan shrinks the registry to 5', mcpNames().length === 5 && plan.mcp.visible === 5, `${mcpNames().length}`)
   check('plan hides record/build/gate', !mcpTool('record') && !mcpTool('build') && !mcpTool('gate'))
+  check('plan hides a tool added after 2.1.0', !mcpTool('go'))
   check('plan keeps analyze/bridge/refresh/profile/map', ['analyze', 'bridge', 'refresh', 'profile', 'map'].every((name) => Boolean(mcpTool(name))))
-  check('bridge.json persisted the tier', JSON.parse(fs.readFileSync(path.join(installDir, 'bridge.json'), 'utf8')).allow.length === 5)
+  check('bridge.json persisted the tier', JSON.parse(fs.readFileSync(path.join(installDir, 'bridge.json'), 'utf8')).preset === 'plan')
 
   const port = await registry.get('ra_surface').execute({ surface: 'port' })
-  check('ra_surface port grows the registry to 11', mcpNames().length === 11 && port.mcp.visible === 11, `${mcpNames().length}`)
+  check('ra_surface port grows to every listed tool', mcpNames().length === 17 && port.mcp.visible === 17, `${mcpNames().length}`)
+  // The regression this rewrite exists for: `go` is in no name list anywhere, so only
+  // annotation-driven tiering can put it in the daily tier.
+  check('a tool the server adds later reaches the port tier', Boolean(mcpTool('go')))
   const recordResult = await mcpTool('record').execute({ crate: 'rust/fuzzy-rs' })
   check('isError comes back as ok:false through the registry', recordResult.ok === false && recordResult.structuredContent.code === 'NO_CRATE')
 
@@ -290,7 +339,7 @@ try {
   )
 
   const surfaceGet = await callRoute('/rust-anything/api/surface', { headers: auth })
-  check('surface GET carries the live tool counts', surfaceGet.status === 200 && surfaceGet.body.mcpTools && surfaceGet.body.mcpTools.total === 16, JSON.stringify(surfaceGet.body.mcpTools))
+  check('surface GET carries the live tool counts', surfaceGet.status === 200 && surfaceGet.body.mcpTools && surfaceGet.body.mcpTools.total === 17, JSON.stringify(surfaceGet.body.mcpTools))
 
   const surfacePost = await callRoute('/rust-anything/api/surface', { method: 'POST', headers: auth, body: { surface: 'plan' } })
   check('surface POST applies the tier', surfacePost.status === 200 && surfacePost.body.surface === 'plan' && mcpNames().length === 5, `${surfacePost.body.surface}, ${mcpNames().length} tools`)

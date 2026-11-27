@@ -50,17 +50,42 @@ const MAX_CAPTURE = 200_000
 // so a planning turn does not carry record/build/gate/app_* schemas it cannot use. There is no
 // separate whole-app tier: the five app_* tools are the last five of the sixteen, so a tier that
 // added them would equal `all`.
+// Tiers are predicates over the server's own `annotations`, not name lists. A tool the CLI adds
+// later lands in the right tier without editing this file; a hardcoded list is exactly how the six
+// tools added after 2.1.0 (`go`, `fuzz`, `package`, `enable`, `disable`, `report`) stayed invisible
+// in both everyday tiers.
 export const SURFACES = {
-  off: { enabled: false, allow: [] },
-  plan: { enabled: true, allow: ['analyze', 'bridge', 'refresh', 'profile', 'map'] },
-  port: {
-    enabled: true,
-    allow: ['analyze', 'bridge', 'refresh', 'profile', 'map', 'record', 'build', 'diff', 'bench', 'shadow', 'gate'],
-  },
-  all: { enabled: true, allow: [] },
+  off: { enabled: false },
+  plan: { enabled: true, preset: 'plan', mode: 'plan' },
+  // `port` and `all` expose every tool the server lists; they differ only in the name they report.
+  port: { enabled: true, preset: 'port', mode: 'all' },
+  all: { enabled: true, preset: 'all', mode: 'all' },
 }
 
 const SURFACE_ORDER = ['off', 'plan', 'port', 'all']
+
+// Planning steps that write but still belong to the `plan` tier: `bridge` writes bindings, `refresh`
+// rewrites them, `profile` writes a profile. Every other writing tool is `port`.
+const PLAN_STEPS = ['bridge', 'refresh', 'profile']
+
+// A bridge.json written by an older build carries the preset as a name list. Those names are a
+// snapshot of the preset, not a user choice, so they are migrated instead of honoured — otherwise
+// the stale list keeps hiding new tools no matter what SURFACES says.
+const LEGACY_ALLOW = {
+  plan: ['analyze', 'bridge', 'refresh', 'profile', 'map'],
+  port: ['analyze', 'bridge', 'refresh', 'profile', 'map', 'record', 'build', 'diff', 'bench', 'shadow', 'gate'],
+}
+
+/** A tool the server marks read-only; the `plan` tier adds these on top of the planning steps. */
+export function isReadOnlyTool(tool) {
+  return Boolean(tool && tool.annotations && tool.annotations.readOnlyHint === true)
+}
+
+/** Every tool the `plan` tier shows: the read-only ones plus the three planning steps. */
+export function isPlanTool(tool) {
+  if (!tool || typeof tool.name !== 'string') return false
+  return isReadOnlyTool(tool) || PLAN_STEPS.includes(tool.name)
+}
 
 function existsFile(candidate) {
   try {
@@ -414,28 +439,42 @@ async function boardReport(config, dir) {
 // ---------------------------------------------------------------------------------------------
 // Surface: bridge.json is the single switch, read by this host half before registering MCP tools.
 // ---------------------------------------------------------------------------------------------
+/** The preset whose old hardcoded name list is exactly `allow`, else null. */
+function legacyPresetOf(allow) {
+  const key = allow.slice().sort().join(',')
+  for (const [name, names] of Object.entries(LEGACY_ALLOW)) {
+    if (names.slice().sort().join(',') === key) return name
+  }
+  return null
+}
+
 function readSurface(config) {
   const { bridgeFile } = statePaths(config)
   const parsed = readJson(bridgeFile)
   const enabled = !(parsed && parsed.enabled === false)
-  const allow = parsed && Array.isArray(parsed.allow) ? parsed.allow.filter((entry) => typeof entry === 'string') : []
-  let name = 'custom'
-  if (!enabled) name = 'off'
-  else if (allow.length === 0) name = 'all'
-  else {
-    for (const [key, value] of Object.entries(SURFACES)) {
-      if (!value.enabled || key === 'off') continue
-      const a = value.allow.slice().sort().join(',')
-      const b = allow.slice().sort().join(',')
-      if (a === b) { name = key; break }
+  let allow = parsed && Array.isArray(parsed.allow) ? parsed.allow.filter((entry) => typeof entry === 'string') : []
+  let preset = parsed && typeof parsed.preset === 'string' && SURFACES[parsed.preset] && parsed.preset !== 'off'
+    ? parsed.preset
+    : null
+  if (!preset && allow.length) {
+    const legacy = legacyPresetOf(allow)
+    // Migrated: the stored list was a preset snapshot, so the tier decides from now on.
+    if (legacy) {
+      preset = legacy
+      allow = []
     }
   }
-  return { surface: name, enabled, allow }
+  if (!preset && allow.length === 0) preset = 'all'
+  const mode = allow.length ? 'allow' : (preset ? SURFACES[preset].mode : 'all')
+  const surface = !enabled ? 'off' : allow.length ? 'custom' : preset
+  return { surface, enabled, allow, preset: preset || 'all', mode }
 }
 
 function writeSurface(config, patch) {
   const { root, bridgeFile } = statePaths(config)
-  const next = { enabled: patch.enabled !== false, allow: Array.isArray(patch.allow) ? patch.allow : [] }
+  const next = { enabled: patch.enabled !== false }
+  if (Array.isArray(patch.allow)) next.allow = patch.allow
+  else if (typeof patch.preset === 'string' && SURFACES[patch.preset] && patch.preset !== 'off') next.preset = patch.preset
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(bridgeFile, `${JSON.stringify({ ...next, updatedAt: new Date().toISOString() }, null, 2)}\n`)
   return readSurface(config)
@@ -448,11 +487,25 @@ function compileAllow(allow) {
   })
 }
 
+// The predicate takes the whole tool, not its name: tier membership comes from the server's own
+// `annotations`, so it cannot go stale when the server adds tools.
 function allowedNames(surface) {
   if (!surface.enabled) return () => false
-  const matchers = compileAllow(surface.allow)
-  if (matchers.length === 0) return () => true
-  return (name) => matchers.some((matcher) => matcher.test(name))
+  if (surface.mode === 'allow') {
+    const matchers = compileAllow(surface.allow)
+    if (matchers.length) return (tool) => matchers.some((matcher) => matcher.test(tool.name))
+    return () => true
+  }
+  if (surface.mode === 'plan') return (tool) => isPlanTool(tool)
+  return () => true
+}
+
+/** One line describing what a tier exposes, shared by the tool output, the report and the page. */
+function surfaceScope(surface) {
+  if (!surface.enabled) return 'no tools'
+  if (surface.mode === 'allow') return surface.allow.length ? surface.allow.join(', ') : 'every tool'
+  if (surface.mode === 'plan') return 'read-only tools + bridge/refresh/profile'
+  return 'every tool'
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -473,6 +526,62 @@ Gemini CLI and OpenCode, not this Harness. -->
 function composeSkill(name, source) {
   if (name !== 'SKILL.md') return source
   return `${SKILL_PREAMBLE}${source}`
+}
+
+/**
+ * Split the packaged SKILL.md into its front-matter description and its body. A runtime-registered
+ * skill carries the description as a field, so the YAML header is dropped from the content.
+ */
+export function parseSkillSource(source) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source)
+  if (!match) return { description: '', body: source }
+  const description = /(?:^|\r?\n)description:\s*([^\r\n]+)/.exec(match[1])
+  return { description: description ? description[1].trim() : '', body: source.slice(match[0].length) }
+}
+
+// Filled by registerSkill so ra_status and the page can report the live registration, not just the
+// copy on disk (which goes stale the moment the plugin is upgraded).
+let skillRegistration = { ok: false, error: 'not attempted' }
+
+/**
+ * Register the workflow as a runtime skill on the Harness itself.
+ *
+ * Writing the files under <DSH_HOME>/skills was the only path, which left a copy that ages against
+ * the plugin version, survives uninstall and competes with a marketplace-installed skill of the same
+ * name. A runtime registration is owned by the plugin's fiber: it is the version in the package and
+ * it disappears with the plugin. The file copy stays for consumers that read the directory.
+ */
+export function registerSkill(ctx, report = []) {
+  try {
+    const file = path.join(SKILL_SRC, 'SKILL.md')
+    if (!fs.existsSync(file)) {
+      report.push('skill sources are missing from the package')
+      skillRegistration = { ok: false, error: 'sources missing' }
+      return { ok: false, report }
+    }
+    if (!ctx || !ctx.skills || typeof ctx.skills.register !== 'function') {
+      report.push('this Harness exposes no skills service; only the filesystem copy is available')
+      skillRegistration = { ok: false, error: 'no skills service' }
+      return { ok: false, report }
+    }
+    const { description, body } = parseSkillSource(fs.readFileSync(file, 'utf8'))
+    ctx.skills.register({
+      name: 'rust-anything',
+      description: description || 'Port code to Rust one unit at a time with the rust-anything tools.',
+      provider: 'dsh-rust-anything',
+      source: 'bundled',
+      resourceBase: { kind: 'directory', path: SKILL_SRC.split(path.sep).join('/') },
+      content: `${SKILL_PREAMBLE}${body}`,
+    })
+    report.push('registered the rust-anything skill on the Harness')
+    skillRegistration = { ok: true, error: null }
+    return { ok: true, report }
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error)
+    report.push(`cannot register the skill: ${message}`)
+    skillRegistration = { ok: false, error: message }
+    return { ok: false, report }
+  }
 }
 
 function installSkill(report = []) {
@@ -867,6 +976,8 @@ async function statusReport(config, options = {}) {
     skill: {
       dir: SKILL_ROOT,
       installed: existsFile(path.join(SKILL_ROOT, 'SKILL.md')),
+      registered: skillRegistration.ok,
+      registerError: skillRegistration.error,
     },
     project: projectReport(options.projectDir || config.projectDir || process.cwd()),
     projectSource: options.projectSource || (options.projectDir ? 'explicit' : config.projectDir ? 'projectDir' : 'cwd'),
@@ -919,9 +1030,9 @@ function renderStatus(value) {
   lines.push('')
   const mcp = value.mcp
   lines.push(`MCP: "${mcp.serverName}" -> ${mcp.toolPrefix}* ${mcp.running ? `running (server ${mcp.serverVersion || '?'})` : 'NOT RUNNING'}`)
-  lines.push(`  surface: ${value.surface.surface}${value.surface.allow.length ? ` = ${value.surface.allow.join(', ')}` : ' (every tool)'}${mcp.visible === null ? '' : `; visible ${mcp.visible}/${mcp.total}`}`)
+  lines.push(`  surface: ${value.surface.surface} = ${surfaceScope(value.surface)}${mcp.visible === null ? '' : `; visible ${mcp.visible}/${mcp.total}`}`)
   if (mcp.lastError) lines.push(`  last error: ${mcp.lastError}`)
-  lines.push(`  skill: ${value.skill.installed ? value.skill.dir : 'NOT INSTALLED'}`)
+  lines.push(`  skill: ${value.skill.registered ? 'registered on the Harness' : 'NOT REGISTERED'}${value.skill.installed ? ` (file copy: ${value.skill.dir})` : ' (no file copy)'}`)
   if (value.doctor) {
     const bad = value.doctor.checks ? value.doctor.checks.filter((check) => check.status !== 'ok') : []
     lines.push(`  doctor: ${value.doctor.ok ? 'all required checks pass' : `${bad.length} check(s) need attention`}`)
@@ -1085,7 +1196,7 @@ function surfaceTool(config, hooks) {
   return {
     name: 'ra_surface',
     description:
-      'Read or switch which rust-anything MCP tools this Harness can see. Tiers: "off" (no tools), "plan" (analyze/bridge/refresh/profile/map), "port" (+record/build/diff/bench/shadow/gate), "all" (every tool the server lists, including the five app_* ones). The surface is written to bridge.json and re-applied to the tool registry immediately — no restart, no reconnect. Call with no argument to read it, or pass an explicit allow list of glob patterns.',
+      'Read or switch which rust-anything MCP tools this Harness can see. Tiers: "off" (no tools), "plan" (read-only tools plus bridge/refresh/profile), "port" (every tool the server lists), "all" (same as port, including the app_* ones). Tiers are decided from each tool\'s read-only annotation, so tools the CLI adds later appear without editing the plugin. The surface is written to bridge.json and re-applied to the tool registry immediately — no restart, no reconnect. Call with no argument to read it, or pass an explicit allow list of glob patterns.',
     parameters: {
       type: 'object',
       properties: {
@@ -1104,7 +1215,7 @@ function surfaceTool(config, hooks) {
         const counts = value.mcp.total ? ` — visible ${value.mcp.visible ?? '?'}/${value.mcp.total}` : ''
         return [{
           type: 'text',
-          text: `rust-anything tool surface: ${value.surface}${value.allow.length ? ` = ${value.allow.join(', ')}` : ' (every tool)'}${counts}`,
+          text: `rust-anything tool surface: ${value.surface} = ${surfaceScope(value)}${counts}`,
         }]
       },
     },
@@ -1455,6 +1566,14 @@ export function apply(ctx, config) {
     if (!skill.ok) console.error(`[dsh-rust-anything] skill install: ${report.join('; ')}`)
   }
 
+  // The runtime registration is what this Harness actually reads; the copy above only serves other
+  // consumers of <DSH_HOME>/skills and cannot shadow a newer packaged version.
+  ctx.inject(['skills'], (skillCtx) => {
+    const report = []
+    const registered = registerSkill(skillCtx, report)
+    if (!registered.ok) console.error(`[dsh-rust-anything] skill register: ${report.join('; ')}`)
+  })
+
   // ---- MCP tools: one registry entry per allowed rust-anything tool ------------------------
   const runtime = {
     client: null,
@@ -1518,7 +1637,7 @@ export function apply(ctx, config) {
     const allowed = allowedNames(surface)
     let visible = 0
     for (const tool of runtime.tools) {
-      if (!allowed(tool.name)) continue
+      if (!allowed(tool)) continue
       try {
         runtime.disposers.set(tool.name, ctx.tools.register(mcpDefinition(tool)))
         visible += 1
@@ -1580,6 +1699,7 @@ export function apply(ctx, config) {
     runtime.tools = await client.listTools()
     runtime.lastError = null
     applySurface()
+    syncPromptSection()
     console.error(`[dsh-rust-anything] MCP client up: ${resolved.cli} (${runtime.total} tools, ${runtime.visible} on this surface)`)
     return runtimeSnapshot()
   }
@@ -1594,6 +1714,39 @@ export function apply(ctx, config) {
 
   ctx.inject(['workingDirectory'], (wdCtx) => {
     workingDirectoryService = wdCtx.workingDirectory || null
+  })
+
+  // `rust-anything mcp` answers `initialize` with the method itself (profile → record → port one unit
+  // at a time). Tool descriptions do not carry it, so dropping it leaves the model holding a toolbox
+  // with no procedure. rc.1 renders `text` as a literal string (a closure would be filtered out), so
+  // a client restart with different text re-registers the section instead.
+  let promptService = null
+  let promptDisposer = null
+  let promptText = null
+  function syncPromptSection() {
+    if (!promptService) return
+    const state = runtime.client ? runtime.client.state : null
+    const text = state && state.instructions ? state.instructions : null
+    if (!text || text === promptText) return
+    if (promptDisposer) {
+      try { promptDisposer() } catch { /* an already-disposed section is not an error */ }
+      promptDisposer = null
+    }
+    try {
+      promptDisposer = promptService.section({
+        name: 'mcp:rust-anything',
+        order: promptService.getSectionOrder('MCP_SERVERS'),
+        interpolate: false,
+        text: `${text}\n\nIn this Harness these are the mcp__rust_anything__* tools. Do not fall back to a rust-anything CLI, to \`rust-anything setup\` or to a PATH change: call ra_install or ra_status instead.`,
+      })
+      promptText = text
+    } catch (error) {
+      console.error(`[dsh-rust-anything] cannot publish the MCP instructions to the system prompt: ${String(error && error.message ? error.message : error)}`)
+    }
+  }
+  ctx.inject(['systemPrompt'], (promptCtx) => {
+    promptService = (promptCtx && promptCtx.systemPrompt) || null
+    syncPromptSection()
   })
 
   const definitions = [statusTool(settings, hooks), cliTool(settings), installTool(settings, hooks), surfaceTool(settings, hooks), bootstrapTool(settings, hooks)]
