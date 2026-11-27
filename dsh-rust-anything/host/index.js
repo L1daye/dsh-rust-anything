@@ -13,7 +13,7 @@
 //       POST /rust-anything/api/surface   { surface } | { enabled, allow }
 //       POST /rust-anything/api/install   { version?, force? } — download, verify, install, restart
 
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -261,6 +261,88 @@ async function versionOf(resolved, refresh = false) {
   probeCache.version = text
   probeCache.versionAt = Date.now()
   return text
+}
+
+/**
+ * Confine one `ra_cli` invocation to the calling session's sandbox.
+ *
+ * The policy is read from the session; `danger-full-access` (and a session with no policy) runs as
+ * before. A stricter mode wraps the argv through `ctx.sandbox.confine`. The backend is probed once:
+ * on a host where no backend is usable the request is refused, and failing every call would be worse
+ * than saying so, so that refusal is recorded and later calls run unconfined with a note.
+ *
+ * @param {string[]} argv - the full argv, program first.
+ * @param {string} cwd - working directory (passed through untouched).
+ * @param {{agent?: {session?: object}, signal?: AbortSignal}} [exec] - the tool call context.
+ * @returns {Promise<{argv: string[], note: string|null}>}
+ */
+async function confineCli(argv, cwd, exec) {
+  if (!sandboxServices || !exec || !exec.agent || !exec.agent.session) return { argv, note: null }
+  if (sandboxBackend === 'unavailable') return { argv, note: null }
+  let policy
+  try {
+    policy = sandboxServices.policy.resolve({ session: exec.agent.session })
+  } catch {
+    return { argv, note: null }
+  }
+  const mode = policy && policy.mode
+  if (!mode || mode === 'danger-full-access') return { argv, note: mode ? `sandbox: ${mode}` : null }
+  try {
+    const wrapped = await sandboxServices.sandbox.confine(argv, policy, exec.signal)
+    const next = wrapped && Array.isArray(wrapped.argv) ? wrapped.argv : null
+    if (!next || next.length === 0) throw new Error('the sandbox returned no argv')
+    sandboxBackend = 'usable'
+    return { argv: next, note: `sandbox: ${mode}, confined` }
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error)
+    if (/no sandbox backend is usable/i.test(message)) {
+      sandboxBackend = 'unavailable'
+      console.error(`[dsh-rust-anything] no sandbox backend on this host; ra_cli runs unconfined: ${message}`)
+      return { argv, note: null }
+    }
+    // Anything else is a refusal this call must honour: running unconfined would break the session's
+    // own policy, which is the one boundary left once approvals are out of the picture.
+    throw new Error(`ra_cli not run: the session sandbox (${mode}) refused to confine the command — ${message}`)
+  }
+}
+
+/**
+ * The upstream release pin, read once. `SHA256SUMS` identifies the archive; the executable inside it
+ * is what actually runs, and until now nothing looked at those bytes.
+ */
+const UPSTREAM_LOCK = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(PACKAGE_DIR, 'upstream-lock.json'), 'utf8'))
+  } catch {
+    return null
+  }
+})()
+
+/**
+ * Compare one freshly installed executable against the pinned bytes.
+ *
+ * A version with no pin is reported and kept: gating the install on a lock that ages with every
+ * release would either block every upgrade or invite a fake pin. A pinned version whose bytes differ
+ * throws, because there the whole point is that those bytes are known.
+ */
+export function verifyExecutable(tag, binary, report = []) {
+  const platform = `${process.platform}-${process.arch}`
+  const entry = UPSTREAM_LOCK && UPSTREAM_LOCK.platforms ? UPSTREAM_LOCK.platforms[platform] : null
+  if (!entry || typeof entry.executableSha256 !== 'string') {
+    report.push(`no executable pin for ${platform} in upstream-lock.json; the archive hash was the only identity check`)
+    return { ok: true, pinned: false, report }
+  }
+  if (UPSTREAM_LOCK.tag && UPSTREAM_LOCK.tag !== tag) {
+    report.push(`${tag} is newer than the pinned ${UPSTREAM_LOCK.tag}; the archive hash was the only identity check`)
+    return { ok: true, pinned: false, report }
+  }
+  const actual = createHash('sha256').update(fs.readFileSync(binary)).digest('hex')
+  if (actual.toLowerCase() !== entry.executableSha256.toLowerCase()) {
+    try { fs.unlinkSync(binary) } catch { /* the caller reports the failure */ }
+    throw new Error(`executable SHA256 mismatch for ${tag}: expected ${entry.executableSha256}, got ${actual}`)
+  }
+  report.push(`executable matches the pinned ${tag} (${actual.slice(0, 12)}…)`)
+  return { ok: true, pinned: true, report }
 }
 
 async function doctorOf(resolved, refresh = false) {
@@ -748,6 +830,7 @@ async function installCli(config, options = {}) {
         if (!found) throw new Error(`the archive did not contain ${EXE_NAME}`)
         fs.mkdirSync(target, { recursive: true })
         fs.copyFileSync(found, binary)
+        verifyExecutable(tag, binary, report)
         fs.rmSync(extractTo, { recursive: true, force: true })
         fs.rmSync(tmp, { force: true })
         try { fs.chmodSync(binary, 0o755) } catch { /* not POSIX */ }
@@ -884,6 +967,42 @@ export function validateToolArgs(tool, args) {
     checkSchemaValue(`${label}.${key}`, value, properties[key])
   }
   return true
+}
+
+// The engine reports a missing program by name and nothing else ("running cargo: program not found").
+// A model that receives that retries the same call; the fix is an install plus a Harness restart,
+// because this process keeps the PATH it started with. The advice comes from CHECKS, so it cannot
+// drift from what the bootstrap actually installs.
+const TOOLCHAIN_HINTS = [
+  [/\brunning (?:cargo|rustc)(?: build)?: program not found/i, 'cargo', 'Rust 工具链（cargo/rustc）不在 PATH'],
+  [/\brunning node: program not found/i, 'node', 'Node.js（node）不在 PATH'],
+  [/\brunning python(?:3)?: program not found/i, 'python3', 'Python（python3/python）不在 PATH'],
+  [/\bpython failed \(exit code: 9009\)/i, 'python3', 'PATH 上的 python 是 Microsoft Store 的占位程序，退出码 9009'],
+  [/\brunning go: program not found/i, 'go', 'Go 不在 PATH'],
+  [/\brunning ruby: program not found/i, 'ruby', 'Ruby 不在 PATH'],
+  [/\brunning (?:java|javac): program not found/i, 'java', 'JDK 不在 PATH'],
+  [/\brunning kotlinc: program not found/i, 'kotlinc', 'Kotlin 编译器不在 PATH'],
+  [/\brunning php: program not found/i, 'php', 'PHP 不在 PATH'],
+  [/\brunning (?:dotnet|csc): program not found/i, 'dotnet', '.NET SDK 不在 PATH'],
+]
+
+/**
+ * Turn one engine error into an install instruction the caller can act on.
+ *
+ * @param {string} message - the tool's failure text.
+ * @returns {string} one sentence, or '' when the failure is not a missing toolchain.
+ */
+export function environmentHint(message) {
+  const text = String(message ?? '')
+  for (const [pattern, id, label] of TOOLCHAIN_HINTS) {
+    if (!pattern.test(text)) continue
+    const check = CHECKS[id]
+    const install = check && check.direct && check.direct.url
+      ? `ra_bootstrap（plan 会自动包含它）或 ${check.winget ? `winget install ${check.winget}` : '它自己的官方安装器'}`
+      : 'ra_bootstrap'
+    return `${label}：用 ${install} 装上，然后重启 DeepSeek Harness——本进程持有启动时的 PATH，不重启看不到新装的工具。`
+  }
+  return ''
 }
 
 function describeValue(value) {
@@ -1196,8 +1315,9 @@ function cliTool(config) {
       const timeoutMs = Number.isFinite(args?.timeoutMs) ? Math.max(0, Math.trunc(args.timeoutMs)) : 180_000
       const cwd = args?.cwd ? path.resolve(base, String(args.cwd)) : (config.projectDir || base)
       const maxChars = Math.min(60_000, Math.max(500, Number.isFinite(args?.maxOutputChars) ? Math.trunc(args.maxOutputChars) : 8_000))
-      const result = await run(resolved.cli, argv, { cwd, timeoutMs, signal: exec?.signal })
-      const command = [resolved.cli, ...argv].map((part) => (/[\s"]/.test(part) ? JSON.stringify(part) : part)).join(' ')
+      const confined = await confineCli([resolved.cli, ...argv], cwd, exec)
+      const result = await run(confined.argv[0], confined.argv.slice(1), { cwd, timeoutMs, signal: exec?.signal })
+      const command = confined.argv.map((part) => (/[\s"]/.test(part) ? JSON.stringify(part) : part)).join(' ')
       const trim = (text) => {
         const value = text.trimEnd()
         if (value.length <= maxChars) return value
@@ -1214,6 +1334,7 @@ function cliTool(config) {
         ms: result.ms,
       }
       if (result.error) payload.error = result.error
+      if (confined.note) payload.sandbox = confined.note
       boardCache.clear()
       return payload
     },
@@ -1605,6 +1726,13 @@ export const inject = ['tools']
 // Electron process happens to sit in, which is what process.cwd() gave before.
 let workingDirectoryService = null
 
+// Filled by the injections below. `ra_cli` is the one place where a model can run an arbitrary
+// program, and the child it starts is not the Harness's shell tool, so nothing confines it unless
+// this plugin asks. `sandboxBackend` remembers a host with no usable backend: retrying a probe on
+// every call would turn one missing capability into a slow, failing tool.
+let sandboxServices = null
+let sandboxBackend = 'unknown'
+
 /**
  * Where the base directory came from: `session` is the folder the user is working in, `projectDir`
  * is configured, `cwd` is the harness process directory — which is only meaningful for a tool call,
@@ -1699,6 +1827,7 @@ export function apply(ctx, config) {
             blocks.push({ type: 'text', text: fallback })
           }
           if (value && value.ok === false) blocks.unshift({ type: 'text', text: `rust-anything ${tool.name} failed:` })
+          if (value && value.hint) blocks.push({ type: 'text', text: value.hint })
           return blocks
         },
       },
@@ -1708,7 +1837,15 @@ export function apply(ctx, config) {
         const raw = args && typeof args === 'object' ? args : {}
         validateToolArgs(tool, raw)
         const base = resolveBaseDir(settings, exec)
-        return client.callTool(tool.name, normalizeToolArgs(raw, base), { signal: exec?.signal, timeoutMs: settings.callTimeoutMs })
+        const result = await client.callTool(tool.name, normalizeToolArgs(raw, base), { signal: exec?.signal, timeoutMs: settings.callTimeoutMs })
+        if (result && result.ok === false) {
+          const text = Array.isArray(result.content)
+            ? result.content.filter((block) => block && typeof block.text === 'string').map((block) => block.text).join('\n')
+            : ''
+          const hint = environmentHint(text)
+          if (hint) result.hint = hint
+        }
+        return result
       },
     }
   }
@@ -1796,6 +1933,12 @@ export function apply(ctx, config) {
 
   ctx.inject(['workingDirectory'], (wdCtx) => {
     workingDirectoryService = wdCtx.workingDirectory || null
+  })
+
+  ctx.inject(['sandboxPolicy', 'sandbox'], (sandboxCtx) => {
+    if (sandboxCtx && sandboxCtx.sandboxPolicy && sandboxCtx.sandbox) {
+      sandboxServices = { policy: sandboxCtx.sandboxPolicy, sandbox: sandboxCtx.sandbox }
+    }
   })
 
   // `rust-anything mcp` answers `initialize` with the method itself (profile → record → port one unit

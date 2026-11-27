@@ -12,6 +12,10 @@
 
 - **MCP `instructions` 注入系统提示**：`initialize` 返回的那份「profile → record → port」总纲之前被丢弃，模型只看得到工具描述、不知道顺序。现在挂到 `MCP_SERVERS` 段（`interpolate: false`），并附一句禁止回退到 CLI / `rust-anything setup` / 改 PATH。
 - **skill 改为运行时注册**：`ctx.skills.register()` 把 skill 注册到宿主，版本随插件走、卸载即注销；`~/.dsh/skills/rust-anything/` 的拷贝保留给读目录的消费者。`ra_status` 新增 `skill.registered`。
+- **`ra_cli` 受会话沙箱约束**：这台机器上它是唯一能跑任意程序的入口，而插件的子进程本来不受 DSH 沙箱管辖。现在读会话的 `sandboxPolicy`，模式比 `danger-full-access` 严格时用 `ctx.sandbox.confine` 包住 argv；后端不可用的主机只记录一次并如实说明，不会假装已隔离。
+- **工具链报错翻译成安装建议**：引擎只回一句 `running cargo: program not found`，模型会原样重试。现在按 `CHECKS` 给出安装命令，并说明必须重启 Harness（本进程持有启动时的 PATH）。
+- **`upstream-lock.json` 双哈希**：`SHA256SUMS` 只能证明归档，跑起来的是里面那个 exe。现在按 tag + 平台钉住解压后的字节；未钉住的版本只报告不拒绝，钉住但对不上则删除并报错。
+- **`release.yml`**：tag 触发时先校验 `tag == package.json == dsh.plugin.json` 并且 CHANGELOG 有对应小节，再跑四套测试、从 CHANGELOG 取正文发 release。v0.1.0-beta.1 那次 tag 指错 5 个 commit 的事故，就是为了不再发生。
 
 ## 0.1.0
 

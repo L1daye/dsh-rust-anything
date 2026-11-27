@@ -50,6 +50,7 @@
     "CHANGELOG.md",
     "THIRD-PARTY-NOTICES.md",
     "bridge.plan.json",
+    "upstream-lock.json",
     "tests/installtest.mjs"
   ],
   "dsh": {

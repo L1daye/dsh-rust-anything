@@ -90,6 +90,12 @@ try {
     }
     const accepts = (args) => { try { host.validateToolArgs(tool, args); return true } catch { return false } }
     check('a valid call passes validation', accepts({ crate: 'rust/x', 'port': 8080, mode: 'fast', run: ['node', 'a.js'] }))
+    // A missing toolchain is the one failure the model can fix, but only if it is told how; the
+    // engine reports a bare "program not found".
+    check('a missing cargo gets an install hint', /cargo/i.test(host.environmentHint('running cargo build: program not found')))
+    check('the Store python stub is explained', /9009/.test(host.environmentHint('python failed (exit code: 9009)')))
+    check('the hint requires a Harness restart', /restart|重启/i.test(host.environmentHint('running node: program not found')))
+    check('an unrelated failure gets no hint', host.environmentHint('NO_CRATE: no crate at rust/x') === '')
     check('a missing required argument is rejected', !accepts({}))
     check('a string where an integer belongs is rejected', !accepts({ crate: 'c', 'port': '8080' }))
     check('an out-of-range integer is rejected', !accepts({ crate: 'c', 'port': 70000 }) && !accepts({ crate: 'c', 'port': 0 }))
@@ -118,6 +124,15 @@ try {
   check('read-only is read from annotations', host.isReadOnlyTool({ name: 'analyze', annotations: { readOnlyHint: true } }) && !host.isReadOnlyTool({ name: 'build', annotations: { readOnlyHint: false } }) && !host.isReadOnlyTool({ name: 'x' }))
   check('plan keeps the writing planning steps', ['bridge', 'refresh', 'profile'].every((name) => host.isPlanTool({ name })))
   check('a tool nobody listed is not in plan', !host.isPlanTool({ name: 'go' }))
+  // The archive hash identifies the download; the executable inside it is what runs.
+  {
+    const lock = JSON.parse(read('upstream-lock.json'))
+    const pinned = lock.platforms && lock.platforms['win32-x64']
+    check('the upstream lock pins a tag', typeof lock.tag === 'string' && /^v\d/.test(lock.tag))
+    check('the upstream lock pins executable bytes', Boolean(pinned) && /^[0-9a-f]{64}$/.test(pinned.executableSha256))
+    check('an unpinned tag is reported, not rejected', host.verifyExecutable('v0.0.0-unpinned', path.join(PKG, 'package.json')).pinned === false)
+  }
+
   const clientModule = await import(pathToFileURL(path.join(PKG, 'host', 'mcp-client.js')).href)
   check('mcp-client exports a factory', typeof clientModule.createRustAnythingClient === 'function')
 

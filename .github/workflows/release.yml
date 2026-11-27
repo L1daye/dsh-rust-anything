@@ -1,0 +1,97 @@
+name: release
+
+# Publishes the GitHub release for a v* tag, with the notes taken from CHANGELOG.md.
+#
+# The tag is the single source of truth for the version, and the first thing this workflow does is
+# check that the three files that carry a version agree with it. That check exists because v0.1.0-beta.1
+# was tagged against a commit five behind the one it described, and nothing noticed for hours.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish notes for
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check the tag matches every version that carries one
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.tag }}" ]; then tag="${{ inputs.tag }}"; tag="${tag#v}"; fi
+          fail=0
+          for file in dsh-rust-anything/package.json dsh-rust-anything/dsh.plugin.json; do
+            version="$(node -p "require('./$file').version")"
+            if [ "$tag" != "$version" ]; then
+              echo "::error file=$file::version $version does not match tag $tag"
+              fail=1
+            fi
+          done
+          if ! grep -q "^## ${tag}$" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::no '## ${tag}' section to publish"
+            fail=1
+          fi
+          exit $fail
+
+      - name: Ensure the tag points at this commit
+        run: |
+          git fetch --tags --force
+          tagged="$(git rev-list -n1 "v${{ github.event.inputs.tag || github.ref_name }}" 2>/dev/null || true)"
+          head="$(git rev-parse HEAD)"
+          if [ -n "$tagged" ] && [ "$tagged" != "$head" ]; then
+            echo "::error::the tag points at $tagged but HEAD is $head; move the tag before publishing"
+            exit 1
+          fi
+
+      - name: Run the test suites
+        shell: pwsh
+        working-directory: dsh-rust-anything
+        run: |
+          foreach ($suite in @('selftest', 'clienttest', 'hosttest', 'installtest')) {
+            node "tests/$suite.mjs"
+            if ($LASTEXITCODE -ne 0) { throw "$suite failed" }
+          }
+
+      - name: Extract the notes for this version
+        run: |
+          version="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${version#v}"
+          node -e '
+            const fs = require("node:fs");
+            const version = process.argv[1];
+            const text = fs.readFileSync("CHANGELOG.md", "utf8");
+            const start = text.indexOf(`\n## ${version}\n`);
+            if (start < 0) throw new Error(`no section for ${version}`);
+            const rest = text.slice(start + 4);
+            const next = rest.indexOf("\n## ");
+            const body = (next < 0 ? rest : rest.slice(0, next)).trim();
+            fs.writeFileSync("notes.md", `![dsh-rust-anything](https://github.com/${process.env.GITHUB_REPOSITORY}/raw/main/docs/banner-0.1.0.png)\n\n${body}\n`);
+          ' "$version"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ github.event.inputs.tag || github.ref_name }}"
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "::notice::release $version already exists; updating its notes"
+            gh release edit "$version" --notes-file notes.md
+          else
+            prerelease=""
+            case "$version" in *-*) prerelease="--prerelease" ;; esac
+            gh release create "$version" --title "dsh-rust-anything ${version#v}" --notes-file notes.md $prerelease
+          fi
