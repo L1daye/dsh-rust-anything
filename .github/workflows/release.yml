@@ -19,7 +19,13 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # Windows, because that is the only platform this plugin supports and installtest drives
+    # install.ps1, which refuses to run anywhere else by design. Git Bash is present on the runner,
+    # so the shell scripts below stay readable.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
         with:
