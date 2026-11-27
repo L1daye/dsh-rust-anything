@@ -151,7 +151,7 @@ function which(name) {
 }
 
 /** Every place a rust-anything binary can legitimately live, most specific first. */
-function resolveCli(config = {}) {
+export function resolveCli(config = {}) {
   const root = installRoot(config)
   const candidates = []
   const push = (cli, source) => {
@@ -159,8 +159,11 @@ function resolveCli(config = {}) {
   }
   push(config.cliPath, 'config')
   push(process.env.RUST_ANYTHING_CLI, 'env')
-  push(path.join(root, 'bin', EXE_NAME), 'plugin-data')
+  // Version directories are deliberate installs by ra_install; <root>/bin is the layout a
+  // `cargo install --root <root>` leaves behind. The explicit install wins, otherwise a stale cargo
+  // binary shadows the release the plugin just verified.
   for (const dir of versionedFirst(listDirs(root))) push(path.join(root, dir, EXE_NAME), 'plugin-data')
+  push(path.join(root, 'bin', EXE_NAME), 'plugin-data')
   push(which('rust-anything'), 'PATH')
   push(path.join(HOME, '.cargo', 'bin', EXE_NAME), 'cargo')
   push(path.join(process.env.APPDATA || path.join(HOME, 'AppData', 'Roaming'), 'npm', EXE_NAME), 'npm')
@@ -809,6 +812,10 @@ async function installCli(config, options = {}) {
   const version = options.version && String(options.version).trim() ? String(options.version).trim() : 'latest'
   const asset = assetForPlatform()
   const report = []
+  // `force` means "do not reuse what is already there", not "also build from source". Without this
+  // flag a forced release install kept going into `cargo install`, which took minutes and could
+  // replace a verified binary with a locally built one.
+  let installedByRelease = false
 
   if (typeof fetch !== 'function') report.push('this Node build has no fetch; falling back to cargo')
   else if (!asset) report.push(`no prebuilt rust-anything release for ${process.platform}/${process.arch}; falling back to cargo`)
@@ -857,6 +864,7 @@ async function installCli(config, options = {}) {
         fs.rmSync(tmp, { force: true })
         try { fs.chmodSync(binary, 0o755) } catch { /* not POSIX */ }
         report.push(`installed rust-anything ${tag} -> ${binary}`)
+        installedByRelease = true
         probeCache.cli = null
         probeCache.version = null
         probeCache.versionAt = 0
@@ -870,7 +878,7 @@ async function installCli(config, options = {}) {
   }
 
   const resolved = resolveCli(config)
-  if (!resolved.cli || options.force === true) {
+  if (!installedByRelease && (!resolved.cli || options.force === true)) {
     const cargo = which('cargo')
     if (cargo) {
       log('running cargo install rust-anything')

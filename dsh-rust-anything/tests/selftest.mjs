@@ -154,6 +154,20 @@ try {
     check('an unpinned tag is reported, not rejected', host.verifyExecutable('v0.0.0-unpinned', path.join(PKG, 'package.json')).pinned === false)
   }
 
+  // ra_install writes <root>/<tag>/, and `cargo install --root <root>` leaves <root>/bin/. The
+  // explicit install has to win: a stale cargo binary used to shadow the release just verified.
+  {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ra-cli-'))
+    const exe = process.platform === 'win32' ? 'rust-anything.exe' : 'rust-anything'
+    fs.mkdirSync(path.join(root, 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'bin', exe), 'cargo layout')
+    fs.mkdirSync(path.join(root, 'v9.9.9'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'v9.9.9', exe), 'release layout')
+    const resolved = host.resolveCli({ installDir: root })
+    check('an explicit version install beats the cargo layout', resolved.cli === path.join(root, 'v9.9.9', exe), String(resolved.cli))
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+
   const clientModule = await import(pathToFileURL(path.join(PKG, 'host', 'mcp-client.js')).href)
   check('mcp-client exports a factory', typeof clientModule.createRustAnythingClient === 'function')
 

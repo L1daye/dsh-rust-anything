@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+在局域网那台机器（DSH 0.2.2-rc.3）实测时抓到的两个安装 bug，都是 0.1.3 之前就存在的：
+
+- **`force` 装完还会再跑一遍 cargo**：`ra_install {force:true}` 从 release 装成功后，条件 `!resolved.cli || force` 仍然成立，于是又执行 `cargo install`——几分钟起步，还可能用本地构建的二进制覆盖刚校验过的那个。现在记录 `installedByRelease`，装成就走完，不再源码构建。
+- **`bin/` 压住了显式安装的版本**：`resolveCli` 的候选顺序把 `<root>/bin/rust-anything.exe`（`cargo install --root` 的布局）排在 `<root>/<tag>/` 前面，所以先装过 cargo 版的机器永远用不上 `ra_install` 装的 release。现在版本目录优先，`bin/` 退为后备。
 ## 0.1.3
 
 ### 变更
