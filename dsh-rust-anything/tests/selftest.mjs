@@ -179,9 +179,17 @@ try {
   // Bootstrap: every check doctor can emit has an entry, and the hard blockers are in every plan.
   // rust-anything 2.1 added Kotlin and Android; every id doctor can emit needs a recipe here.
   const boot = await import(pathToFileURL(path.join(PKG, 'host', 'bootstrap.js')).href)
-  const doctorIds = ['cargo', 'node', 'python3', 'cc', 'go', 'ruby', 'java', 'javac', 'php', 'dotnet', 'wasm-bindgen', 'wasm32-unknown-unknown', 'kotlinc', 'Android NDK', 'Android Rust targets', 'mcp server', 'agents']
+  const doctorIds = ['cargo', 'node', 'python3', 'cc', 'go', 'ruby', 'java', 'javac', 'php', 'dotnet', 'wasm-bindgen', 'wasm32-unknown-unknown', 'kotlinc', 'Android NDK', 'Android Rust targets', 'Android adb', 'mcp server', 'agents']
   const missing = doctorIds.filter((id) => !boot.CHECKS[id])
   check('every doctor check has an install recipe', missing.length === 0, missing.join(', '))
+  // adb ships in platform-tools, not in the NDK, and rust-anything 5.x checks for it by name.
+  check('adb comes from platform-tools and lands on PATH', (() => {
+    const adb = boot.CHECKS['Android adb']
+    if (!adb || !adb.direct) return false
+    return /platform-tools-latest-windows\.zip$/.test(adb.direct.url) && adb.direct.dest === 'platform-tools'
+      && adb.direct.flatten === true && adb.direct.path.includes('{root:dest}')
+  })())
+  check('the android plan installs adb with the NDK', boot.PLANS.android.includes('Android adb') && boot.PLANS.android.includes('Android NDK'))
   check('agents and the MCP server are never installed', boot.CHECKS.agents.skip === 'agent' && boot.CHECKS['mcp server'].skip === 'self')
   check('cargo comes from the official rustup', /win\.rustup\.rs/.test(JSON.stringify(boot.CHECKS.cargo)))
   check('a CN mirror is available for rustup', /tuna\.tsinghua\.edu\.cn/.test(boot.MIRRORS.cn.RUSTUP_DIST_SERVER) && Boolean(boot.MIRRORS.cn.RUSTUP_UPDATE_ROOT))

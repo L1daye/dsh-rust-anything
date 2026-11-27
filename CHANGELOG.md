@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### 新增
+
+- **`Android adb` 安装项**：rust-anything 5.x 的 doctor 会检查 adb，而 NDK 里不含它（adb 在独立的 platform-tools 包里）。现在 `bootstrap.js` 下载 `platform-tools-latest-windows.zip`、flatten 解压到 `<root>/platform-tools`、把该目录写进机器 PATH；`android` 与 `all` 两个 plan 都会带上它。
 ## 0.1.1
 
 ### 修复

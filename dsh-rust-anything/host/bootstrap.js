@@ -49,8 +49,8 @@ export const PLANS = {
   ruby: ['cargo', 'cc', 'ruby'],
   java: ['cargo', 'cc', 'java', 'javac'],
   wasm: ['cargo', 'cc', 'wasm32-unknown-unknown', 'wasm-bindgen'],
-  android: ['cargo', 'cc', 'kotlinc', 'Android Rust targets', 'Android NDK'],
-  all: ['cargo', 'cc', 'node', 'python3', 'go', 'ruby', 'java', 'javac', 'php', 'dotnet', 'wasm32-unknown-unknown', 'wasm-bindgen', 'kotlinc', 'Android Rust targets', 'Android NDK'],
+  android: ['cargo', 'cc', 'kotlinc', 'Android Rust targets', 'Android NDK', 'Android adb'],
+  all: ['cargo', 'cc', 'node', 'python3', 'go', 'ruby', 'java', 'javac', 'php', 'dotnet', 'wasm32-unknown-unknown', 'wasm-bindgen', 'kotlinc', 'Android Rust targets', 'Android NDK', 'Android adb'],
 }
 
 const VS_BUILD_TOOLS_OVERRIDE = [
@@ -232,6 +232,23 @@ export const CHECKS = {
     weight: 'small',
     requires: ['cargo'],
     rustupTargets: ['aarch64-linux-android', 'armv7-linux-androideabi', 'x86_64-linux-android'],
+  },
+  // rust-anything 5.x checks for this. The NDK carries compilers but not adb, which lives in the
+  // separate platform-tools package, so the two are installed independently on purpose.
+  'Android adb': {
+    label: 'Android platform tools (adb)',
+    why: 'Android 设备上的 app_record / app_replay 与前门投放都要 adb；NDK 里不含它',
+    weight: 'small',
+    direct: {
+      url: 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip',
+      kind: 'zip',
+      dest: 'platform-tools',
+      // The archive wraps everything in one platform-tools/ directory; flatten puts adb.exe at the
+      // destination root so the PATH entry below is the directory the binary is actually in.
+      flatten: true,
+      path: ['{root:dest}'],
+      scope: 'machine',
+    },
   },
   'wasm32-unknown-unknown': {
     label: 'rustup target wasm32-unknown-unknown',
